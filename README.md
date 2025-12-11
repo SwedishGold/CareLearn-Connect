@@ -26,7 +26,7 @@ This project is submitted for the **Vibe Code with Gemini 3 Pro** competition.
 
 - **Kaggle Submission:** [Link to Competition Entry](https://www.kaggle.com/competitions/vibe-code-with-gemini-3-pro)
 - **Developer:** Andreas Hillborgh
-- **LinkedIn:** [Connect with me](https://www.linkedin.com/in/andreas-hillborgh/)
+- **LinkedIn:** [Connect with me](https://www.linkedin.com/in/andreas-hillborgh-51581371/)
 
 ## 👨‍💻 About the Developer
 
