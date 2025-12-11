@@ -1,0 +1,350 @@
+
+<!DOCTYPE html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>CareLearn Avd. 51</title>
+    
+    <!-- PWA Settings -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CareLearn" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+
+    <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.20.0",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "types": "https://aistudiocdn.com/types@^0.1.1"
+  }
+}
+</script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                850: '#151e2e',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DotGothic16&display=swap" rel="stylesheet">
+    <!-- PDF.js for parsing PDF files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.min.mjs" type="module"></script>
+    <!-- Mammoth.js for parsing .docx files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+    <!-- jsPDF for creating PDF files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- html2canvas for capturing HTML elements -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- QRCode generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- QRCode scanning -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
+    <!-- Firebase SDKs -->
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+      :root {
+        /* Light Mode Defaults (Clean Healthcare Look) */
+        --primary-color: #EF4444; /* Red-500 */
+        --primary-hover: #DC2626; /* Red-600 */
+        --accent-color: #F97316;  /* Orange-500 */
+        
+        --bg-main: #F3F4F6;       /* Gray-100 */
+        --bg-card: #FFFFFF;       /* White */
+        --text-main: #111827;     /* Gray-900 (Darker for readability) */
+        --text-subtle: #4B5563;   /* Gray-600 (Darker than 500 for white bg) */
+        --border-color: #E5E7EB;  /* Gray-200 */
+
+        --font-display: 'Inter', sans-serif; /* Clean font for light mode titles */
+        --font-body: 'Inter', sans-serif;
+      }
+
+      /* Dark Mode Overrides (Retro Tech Look) */
+      html.dark {
+        --bg-main: #111111;         /* Matte Black */
+        --bg-card: rgba(29, 29, 29, 0.6);
+        --text-main: #F6F6F4;       /* Off-white */
+        --text-subtle: #9E9E9E;     /* Light Gray */
+        --border-color: #333333;    /* Dark Gray */
+        --font-display: 'DotGothic16', sans-serif; /* Retro font for dark mode */
+      }
+
+      body {
+        font-family: var(--font-body);
+        background-color: var(--bg-main);
+        color: var(--text-main);
+        transition: background-color 0.3s ease, color 0.3s ease;
+        font-size: 16px;
+        line-height: 1.6;
+        overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile app */
+      }
+
+      /* Background Pattern - Subtle in Light, Techy in Dark */
+      body {
+        background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+      html.dark body {
+        background-image:
+            linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+            linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px);
+      }
+
+      /* Dynamic Font Loading for Headings */
+      h1, h2, h3, h4, h5, h6, .font-display, button {
+        font-family: var(--font-display);
+      }
+      html:not(.dark) h1, html:not(.dark) h2, html:not(.dark) h3 {
+        letter-spacing: -0.025em; /* Tighter tracking for Inter */
+      }
+
+      /* Improved Readability Elements */
+      p, span, li, a, div, input, textarea, select, .prose {
+        font-family: var(--font-body);
+      }
+
+      /* Chat Bubbles */
+      .chat-bubble-user {
+          background-color: var(--primary-color);
+          color: white;
+          border-radius: 0.75rem;
+          border-bottom-right-radius: 0.1rem;
+      }
+      .chat-bubble-bot {
+          background-color: #F3F4F6; /* Gray-100 */
+          color: #1F2937; /* Gray-800 */
+          border-radius: 0.75rem;
+          border-bottom-left-radius: 0.1rem;
+          border: 1px solid #E5E7EB;
+      }
+      html.dark .chat-bubble-bot {
+          background-color: #333;
+          color: var(--text-main);
+          border: none;
+      }
+
+      .typing-cursor::after {
+          content: '▋';
+          animation: blink 1s step-start infinite;
+      }
+      
+      /* Card Base - Adaptive */
+      .card-base {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.03);
+        color: var(--text-main);
+        transition: background-color 0.3s ease, border-color 0.3s ease;
+      }
+      html.dark .card-base {
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.4);
+      }
+      
+      /* --- Source Link in Chat --- */
+      .source-link {
+        color: #2563EB; /* Blue-600 */
+        text-decoration: underline;
+        font-weight: 500;
+      }
+      html.dark .source-link { color: #a5b4fc; }
+      .source-link:hover { color: #1D4ED8; }
+      html.dark .source-link:hover { color: #c7d2fe; }
+
+      /* --- Animations --- */
+      @keyframes page-enter-animation {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+      }
+      .page-enter {
+          animation: page-enter-animation 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+      }
+      .stagger-item {
+        animation: stagger-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+        animation-delay: var(--stagger-delay, 0ms);
+      }
+      @keyframes stagger-in {
+          0% { transform: translateY(20px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+      }
+       @keyframes context-prompt-in {
+        from { opacity: 0; transform: translateX(10px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      .animate-context-prompt-in {
+        animation: context-prompt-in 0.3s ease-out forwards;
+      }
+      .btn-press:active {
+        transform: scale(0.97);
+        transition: transform 0.1s ease;
+      }
+      @keyframes blink { 50% { opacity: 0; } }
+      
+      /* --- Print Styles --- */
+      @media print {
+        body * { visibility: hidden; }
+        .printable-area, .printable-area * { visibility: visible; }
+        .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; }
+      }
+
+      /* --- Timer Styles --- */
+      .timer-display {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 1.5px;
+        filter: drop-shadow(0 0 2px rgba(255, 138, 0, 0.5));
+      }
+      .timer-display.time-up {
+        filter: drop-shadow(0 0 3px rgba(255, 43, 43, 0.7));
+        animation: pulse-red 1.5s infinite;
+      }
+      .segment {
+        position: absolute;
+        background-color: #E5E7EB; /* Light mode off */
+        border-radius: 1px;
+      }
+      html.dark .segment { background-color: #374151; }
+      .segment.on { background-color: var(--accent-color); }
+      .timer-display.time-up .segment.on { background-color: var(--primary-color); }
+
+      .segment.a, .segment.d, .segment.g { width: 6px; height: 1.5px; left: 1.5px; }
+      .segment.b, .segment.c, .segment.e, .segment.f { width: 1.5px; height: 7px; }
+      .segment.a { top: 0; }
+      .segment.b { top: 1.5px; right: 0; }
+      .segment.c { top: 9.5px; right: 0; }
+      .segment.d { bottom: 0; }
+      .segment.e { top: 9.5px; left: 0; }
+      .segment.f { top: 1.5px; left: 0; }
+      .segment.g { top: 8.25px; }
+
+      .digit { position: relative; width: 9px; height: 18px; }
+      .colon { width: 3px; height: 18px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4.5px; }
+      .colon .dot { width: 1.5px; height: 1.5px; background-color: var(--accent-color); border-radius: 50%; }
+
+      /* --- Logbook Sequencer --- */
+      .logbook-lcd-display {
+          background-color: white;
+          border: 2px solid #E5E7EB;
+          border-radius: 4px;
+          padding: 4px 8px;
+          color: #1F2937;
+      }
+      html.dark .logbook-lcd-display {
+          background-color: #1e293b;
+          border-color: #475569;
+          color: #e2e8f0;
+          box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+      }
+      
+      .logbook-sequencer-day {
+          background-color: white;
+          border: 1px solid #E5E7EB;
+          color: #9CA3AF;
+      }
+      html.dark .logbook-sequencer-day {
+          background-color: #1f2937;
+          border-color: #374151;
+          color: #9ca3af;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+      }
+      .logbook-sequencer-day.has-entry {
+          background-color: var(--primary-color);
+          border-color: var(--primary-hover);
+          color: white;
+      }
+      .logbook-sequencer-day:not(.has-entry):not(:disabled):hover {
+          background-color: #F3F4F6;
+      }
+      html.dark .logbook-sequencer-day:not(.has-entry):not(:disabled):hover {
+          background-color: #374151;
+      }
+
+      /* --- Profile Selection BG --- */
+      .profile-selection-bg {
+        background-color: var(--bg-main);
+        position: relative;
+        overflow: hidden;
+      }
+      .grid-overlay {
+        position: absolute;
+        inset: 0;
+        background-image:
+            linear-gradient(rgba(239, 68, 68, 0.05) 1px, transparent 1px),
+            linear-gradient(to right, rgba(239, 68, 68, 0.05) 1px, transparent 1px);
+        background-size: 50px 50px;
+        opacity: 0.5;
+        animation: pan 120s linear infinite;
+      }
+      html.dark .grid-overlay {
+         background-image:
+            linear-gradient(rgba(255, 43, 43, 0.1) 1px, transparent 1px),
+            linear-gradient(to right, rgba(255, 43, 43, 0.1) 1px, transparent 1px);
+         opacity: 0.3;
+      }
+      
+      /* --- Custom Checkbox --- */
+      .custom-checkbox-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+      .custom-checkbox-container { transition: background-color 0.2s, border-color 0.2s, transform 0.15s; }
+      .custom-checkbox-svg { stroke: white; stroke-width: 3px; opacity: 0; transform: scale(0.5); transition: opacity 0.2s, transform 0.2s; }
+      .custom-checkbox-input:checked ~ .custom-checkbox-container { background-color: var(--primary-color); border-color: var(--primary-color); transform: scale(0.95); }
+      .custom-checkbox-input:checked ~ .custom-checkbox-container .custom-checkbox-svg { opacity: 1; transform: scale(1) rotate(3deg); }
+
+      @keyframes pan { 0% { background-position: 0% 0%; } 100% { background-position: 200% 200%; } }
+      @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    </style>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    <svg style="display: none;">
+      <defs>
+        <symbol id="carelearn-logo-symbol" viewBox="0 0 100 100">
+           <path d="M50,95 C25.147,95 5,74.853 5,50 C5,35.74 12.82,23.691 25,17.5 L25,50 C25,63.807 36.193,75 50,75 C63.807,75 75,63.807 75,50 L75,17.5 C87.18,23.691 95,35.74 95,50 C95,74.853 74.853,95 50,95 Z" fill="currentColor" opacity="0.8"/>
+           <path d="M50,5 C58.284,5 65,11.716 65,20 L65,50 L35,50 L35,20 C35,11.716 41.716,5 50,5 Z" fill="currentColor"/>
+        </symbol>
+        <symbol id="carelearn-logo-full" viewBox="0 0 200 40">
+          <use href="#carelearn-logo-symbol" width="40" height="40" x="0" y="0"></use>
+          <text x="50" y="27" font-family="var(--font-display)" font-size="24" fill="currentColor">
+            Care<tspan fill="var(--primary-color)">Learn</tspan>
+          </text>
+        </symbol>
+      </defs>
+    </svg>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./service-worker.js')
+            .then(registration => {
+              console.log('SW registered: ', registration);
+            })
+            .catch(registrationError => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>

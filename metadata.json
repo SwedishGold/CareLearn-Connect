@@ -1,0 +1,7 @@
+{
+  "name": "CareLearn Connect ",
+  "description": "From here",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
