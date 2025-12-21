@@ -60,6 +60,18 @@ export interface Workplace {
     searchKey: string; // Lowercase name for searching
 }
 
+// --- Registration / Beta policy ---
+export interface RegistrationConfig {
+  // Which workplaces can be selected during self-signup (beta gating).
+  allowedWorkplaces: string[];
+  // Roles that require manual provisioning by Developer (cannot self-signup).
+  blockedSignupRoles: Role[];
+  // Shown in UI and used in error messages.
+  betaInfoText: string;
+  developerContactEmail: string;
+  developerLinkedInUrl: string;
+}
+
 export interface User {
   id: string;
   name: string;

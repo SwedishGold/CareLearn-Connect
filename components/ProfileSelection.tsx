@@ -1,7 +1,7 @@
 
 import React, { useState, memo, useMemo, useRef, useEffect } from 'react';
 import { User, Role } from '../types';
-import { VASTERNORRLAND_UNITS, ICONS } from '../constants';
+import { ICONS } from '../constants';
 import { InfoTooltip, Modal } from './UI';
 import { playLogin, playSuccess, playError } from '../services/soundService';
 import * as storage from '../services/localStorageService';
@@ -48,26 +48,29 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
     const [confirmPassword, setConfirmPassword] = useState('');
     const [newRole, setNewRole] = useState<Role | ''>('');
     const [newWorkplace, setNewWorkplace] = useState('');
-    const [workplaceSearch, setWorkplaceSearch] = useState('');
-    const [showWorkplaceSuggestions, setShowWorkplaceSuggestions] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
+    const [registrationConfig, setRegistrationConfig] = useState<Awaited<ReturnType<typeof storage.getRegistrationConfig>> | null>(null);
     
     const workplaceWrapperRef = useRef<HTMLDivElement>(null);
     
-    const filteredWorkplaces = useMemo(() => {
-        if (!workplaceSearch) return VASTERNORRLAND_UNITS;
-        const lower = workplaceSearch.toLowerCase();
-        return VASTERNORRLAND_UNITS.filter(u => u.name.toLowerCase().includes(lower));
-    }, [workplaceSearch]);
+    const allowedWorkplaces = useMemo(() => registrationConfig?.allowedWorkplaces || [], [registrationConfig]);
 
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (workplaceWrapperRef.current && !workplaceWrapperRef.current.contains(event.target as Node)) {
-                setShowWorkplaceSuggestions(false);
+        // Load beta registration policy from backend settings (seeded if missing).
+        const loadConfig = async () => {
+            try {
+                const cfg = await storage.getRegistrationConfig();
+                setRegistrationConfig(cfg);
+                // Preselect first allowed workplace for better UX
+                if (!newWorkplace && cfg.allowedWorkplaces?.length) {
+                    setNewWorkplace(cfg.allowedWorkplaces[0]);
+                }
+            } catch (e) {
+                console.warn("Could not load registration config, falling back to defaults.");
+                if (!newWorkplace) setNewWorkplace('Avdelning 51');
             }
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        loadConfig();
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -114,10 +117,17 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
     };
 
     const handleGoogleSignup = async () => {
-        const finalWorkplace = newRole === 'developer' ? 'CareLearn HQ' : (newWorkplace || workplaceSearch);
+        const finalWorkplace = newRole === 'developer' ? 'CareLearn HQ' : newWorkplace;
         
         if (!newRole) {
             alert("Du måste välja en roll (t.ex. Student) innan du kan gå med via Google.");
+            return;
+        }
+        if (newRole === 'admin' || newRole === 'huvudhandledare') {
+            const contact = registrationConfig
+                ? `${registrationConfig.developerContactEmail} / ${registrationConfig.developerLinkedInUrl}`
+                : 'kontakta utvecklaren';
+            alert(`Chef/Admin-konto skapas av utvecklaren. Kontakta: ${contact}`);
             return;
         }
         if (newRole !== 'developer' && !finalWorkplace) {
@@ -188,10 +198,17 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
-        const finalWorkplace = newRole === 'developer' ? 'CareLearn HQ' : (newWorkplace || workplaceSearch);
+        const finalWorkplace = newRole === 'developer' ? 'CareLearn HQ' : newWorkplace;
 
         if (!newName || !newEmail || !newPassword || !confirmPassword || !newRole) {
             alert("Vänligen fyll i alla obligatoriska fält.");
+            return;
+        }
+        if (newRole === 'admin' || newRole === 'huvudhandledare') {
+            const contact = registrationConfig
+                ? `${registrationConfig.developerContactEmail} / ${registrationConfig.developerLinkedInUrl}`
+                : 'kontakta utvecklaren';
+            alert(`Chef/Admin-konto skapas av utvecklaren. Kontakta: ${contact}`);
             return;
         }
         if (newPassword !== confirmPassword) {
@@ -359,41 +376,53 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
                                         <option value="anstalld-ssk">Sjuksköterska (SSK)</option>
                                         <option value="vikarie-usk">Vikarie</option>
                                         <option value="handledare-usk">Handledare</option>
-                                        <option value="admin">Chef/Admin</option>
+                                        <option value="admin" disabled>Chef/Admin (kräver konto skapat av utvecklare)</option>
                                     </select>
                                     
                                     {newRole !== 'developer' && (
-                                        <div className="col-span-2 md:col-span-1 relative" ref={workplaceWrapperRef}>
-                                            <input
-                                                type="text"
-                                                placeholder="Arbetsplats?"
-                                                value={workplaceSearch}
-                                                onChange={(e) => {
-                                                    setWorkplaceSearch(e.target.value);
-                                                    setNewWorkplace('');
-                                                    setShowWorkplaceSuggestions(true);
-                                                }}
-                                                onFocus={() => setShowWorkplaceSuggestions(true)}
-                                                className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-500"
-                                            />
-                                            {showWorkplaceSuggestions && (
-                                                <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                                                    {filteredWorkplaces.map((unit, idx) => (
-                                                        <button
-                                                            key={idx}
-                                                            type="button"
-                                                            className="w-full text-left px-4 py-2 hover:bg-slate-700 text-white text-sm"
-                                                            onClick={() => {
-                                                                setNewWorkplace(unit.name);
-                                                                setWorkplaceSearch(unit.name);
-                                                                setShowWorkplaceSuggestions(false);
-                                                            }}
-                                                        >
-                                                            {unit.name}
-                                                        </button>
-                                                    ))}
+                                        <div className="col-span-2 md:col-span-1 space-y-2" ref={workplaceWrapperRef}>
+                                            <select
+                                                value={newWorkplace}
+                                                onChange={(e) => setNewWorkplace(e.target.value)}
+                                                className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                                                required
+                                            >
+                                                <option value="" disabled>Välj avdelning...</option>
+                                                {(allowedWorkplaces.length ? allowedWorkplaces : ['Avdelning 51', 'Avdelning 7']).map((wp) => (
+                                                    <option key={wp} value={wp}>{wp}</option>
+                                                ))}
+                                            </select>
+                                            <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/60 text-xs text-slate-300 leading-relaxed">
+                                                <div className="font-semibold text-slate-200 mb-1">Beta: avdelningar är låsta</div>
+                                                <div className="text-slate-400">
+                                                    {registrationConfig?.betaInfoText || 'Just nu är endast Avdelning 51 och Avdelning 7 öppna för egenregistrering. Fler avdelningar kommer.'}
                                                 </div>
-                                            )}
+                                                <div className="mt-2 text-slate-300">
+                                                    Vid intresse av att ansluta fler avdelningar, kontakta utvecklaren:
+                                                    {' '}
+                                                    <a
+                                                        href={`mailto:${registrationConfig?.developerContactEmail || 'Andreas.guldberg@gmail.com'}`}
+                                                        className="text-indigo-300 hover:underline"
+                                                    >
+                                                        {registrationConfig?.developerContactEmail || 'Andreas.guldberg@gmail.com'}
+                                                    </a>
+                                                    {' '}
+                                                    eller via
+                                                    {' '}
+                                                    <a
+                                                        href={registrationConfig?.developerLinkedInUrl || 'https://www.linkedin.com/in/andreas-hillborgh-51581371?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app'}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-indigo-300 hover:underline"
+                                                    >
+                                                        LinkedIn
+                                                    </a>
+                                                    .
+                                                </div>
+                                                <div className="mt-2 text-slate-400">
+                                                    Chef/Admin-konton skapas endast av utvecklaren (max 1 per avdelning).
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

@@ -1,5 +1,5 @@
 
-import { User, UserData, Role, LogbookEntry, DepartmentSettings, CustomDocument, Notification, Post, Credential, ScheduleEntry, PastPlacement, UnansweredQuestion, FlaggedContentEntry, FeedbackEntry, Workplace } from '../types';
+import { User, UserData, Role, LogbookEntry, DepartmentSettings, CustomDocument, Notification, Post, Credential, ScheduleEntry, PastPlacement, UnansweredQuestion, FlaggedContentEntry, FeedbackEntry, Workplace, RegistrationConfig } from '../types';
 import { APP_DATA } from '../constants';
 import { DEMO_USER_DATA } from '../constants/demoData';
 import { generateUserProfile } from '../services/geminiService';
@@ -82,12 +82,132 @@ export const getDefaultUserData = (role: Role, aplWeeks: number = 4): UserData =
     };
 };
 
+// --- REGISTRATION POLICY (BETA) ---
+const REGISTRATION_SETTINGS_DOC_ID = 'registration';
+
+const normalizeWorkplace = (workplace: string): string => (workplace || '').trim();
+
+export const getRegistrationConfig = async (): Promise<RegistrationConfig> => {
+    const ref = db.collection('settings').doc(REGISTRATION_SETTINGS_DOC_ID);
+    const snap = await ref.get();
+    if (snap.exists) return snap.data() as RegistrationConfig;
+
+    const defaults: RegistrationConfig = {
+        allowedWorkplaces: ['Avdelning 51', 'Avdelning 7'],
+        blockedSignupRoles: ['admin', 'huvudhandledare', 'developer'],
+        betaInfoText:
+            'CareLearn Connect är i beta. Just nu är endast Avdelning 51 och Avdelning 7 öppna för egenregistrering. Fler avdelningar kommer när rutiner/PM finns uppladdade i kunskapsbanken.',
+        developerContactEmail: 'Andreas.guldberg@gmail.com',
+        developerLinkedInUrl: 'https://www.linkedin.com/in/andreas-hillborgh-51581371?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app'
+    };
+    await ref.set(defaults);
+    return defaults;
+};
+
+export const updateRegistrationConfig = async (config: RegistrationConfig): Promise<void> => {
+    const ref = db.collection('settings').doc(REGISTRATION_SETTINGS_DOC_ID);
+    await ref.set(config);
+};
+
+const formatRegistrationContact = (cfg: RegistrationConfig): string =>
+    `Kontakta: ${cfg.developerContactEmail} eller via LinkedIn: ${cfg.developerLinkedInUrl}`;
+
+const enforceRegistrationPolicy = async (args: {
+    config: RegistrationConfig;
+    role: Role;
+    workplace: string;
+    allowPrivilegedProvisioning: boolean;
+}): Promise<void> => {
+    const role = args.role;
+    const workplace = normalizeWorkplace(args.workplace);
+    const cfg = args.config;
+
+    // Developer should not be self-registered via regular signup.
+    if (role === 'developer') {
+        throw new Error('Utvecklarkonto skapas via utvecklarflödet (Dev Access).');
+    }
+
+    // Block privileged roles from self-signup (admin/chef etc.)
+    if ((cfg.blockedSignupRoles || []).includes(role) && !args.allowPrivilegedProvisioning) {
+        throw new Error(`Denna roll kräver att kontot skapas av utvecklaren.\n\n${formatRegistrationContact(cfg)}`);
+    }
+
+    // Workplace must be one of the allowed beta workplaces (for self-signup).
+    const allowed = (cfg.allowedWorkplaces || []).map(normalizeWorkplace).filter(Boolean);
+    if (!workplace || !allowed.includes(workplace)) {
+        throw new Error(`${cfg.betaInfoText}\n\nTillgängliga avdelningar just nu: ${allowed.join(', ') || 'inga'}.\n\n${formatRegistrationContact(cfg)}`);
+    }
+
+    // Enforce max 1 admin per workplace (policy across all workplaces).
+    if (role === 'admin') {
+        const existing = await db
+            .collection('users')
+            .where('role', '==', 'admin')
+            .where('workplace', '==', workplace)
+            .limit(1)
+            .get();
+        if (!existing.empty) {
+            throw new Error(`Det finns redan ett Admin/Chef-konto för ${workplace}. Kontakta utvecklaren för ändringar.`);
+        }
+    }
+};
+
+export const createPrivilegedAccount = async (args: {
+    name: string;
+    email: string;
+    temporaryPassword: string;
+    role: Role; // should be 'admin' (or other privileged roles if enabled later)
+    workplace: string;
+}): Promise<User> => {
+    const cfg = await getRegistrationConfig();
+    await enforceRegistrationPolicy({
+        config: cfg,
+        role: args.role,
+        workplace: args.workplace,
+        allowPrivilegedProvisioning: true,
+    });
+
+    // Bypass self-signup policy in registerUser since we already enforced above.
+    return await registerUser(
+        args.name,
+        args.email,
+        args.temporaryPassword,
+        args.role,
+        args.workplace,
+        undefined,
+        undefined,
+        undefined,
+        { bypassRegistrationPolicy: true }
+    );
+};
+
 // --- AUTH SERVICE ---
 
-export const registerUser = async (name: string, email: string, password: string | undefined, role: Role, workplace: string, apiKey?: string, aplWeeks?: number, workplaceId?: string): Promise<User> => {
+export const registerUser = async (
+    name: string,
+    email: string,
+    password: string | undefined,
+    role: Role,
+    workplace: string,
+    apiKey?: string,
+    aplWeeks?: number,
+    workplaceId?: string,
+    options?: { bypassRegistrationPolicy?: boolean }
+): Promise<User> => {
     if (!password) throw new Error("Lösenord krävs för registrering.");
     
     try {
+        // 0. Enforce beta registration policy (unless explicitly bypassed by developer tooling)
+        if (!options?.bypassRegistrationPolicy && role !== 'developer') {
+            const registrationConfig = await getRegistrationConfig();
+            await enforceRegistrationPolicy({
+                config: registrationConfig,
+                role,
+                workplace,
+                allowPrivilegedProvisioning: false,
+            });
+        }
+
         // 1. Create Auth User
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
@@ -197,6 +317,15 @@ export const authenticateWithGoogle = async (
                 await auth.signOut();
                 throw new Error("Roll och arbetsplats måste väljas för att skapa ett konto.");
             }
+
+            // Enforce beta registration policy (Google self-signup)
+            const registrationConfig = await getRegistrationConfig();
+            await enforceRegistrationPolicy({
+                config: registrationConfig,
+                role,
+                workplace,
+                allowPrivilegedProvisioning: false,
+            });
 
             // Create new profile
             console.log("Creating new Google user profile...");
@@ -702,7 +831,7 @@ export const deletePost = async (postId: string) => {
 export const seedDemoStudentData = () => { /* No-op in Cloud mode */ };
 
 export const injectDemoData = async (): Promise<User> => {
-    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', 'Avd 51');
+    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', 'Avdelning 51');
 };
 
 export const exportAllData = async (): Promise<string> => {
