@@ -368,7 +368,7 @@ export const CareFlowNavigator: React.FC<{ user: User, onSourceClick?: (title: s
         setIsLoading(true);
         setError(null);
         try {
-            const steps = await generateCareFlow(query, user.role);
+            const steps = await generateCareFlow(query, user.role, user.workplace);
             if (steps && steps.length > 0) {
                 setFlow(steps);
             } else {

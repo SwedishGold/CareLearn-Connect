@@ -147,6 +147,27 @@ const generateTextStreamWithFallback = async (
     }
 };
 
+// --- CORE CONTEXT (ROLE + WORKPLACE + TOOL) ---
+const buildToolContextBlock = (params: {
+    toolName: string;
+    user?: Pick<User, 'name' | 'role' | 'workplace'>;
+    role?: Role;
+    workplaceName?: string;
+}): string => {
+    const role = params.user?.role || params.role || 'okänd';
+    const workplace = (params.user?.workplace || params.workplaceName || '').trim() || 'okänd';
+    const name = (params.user?.name || '').trim();
+
+    // Kort och stabilt – detta ska hjälpa modellen att svara rätt utan att “spilla” in i output-format (t.ex. JSON).
+    return `
+KONTEXT (CareLearn Connect):
+- VERKTYG: ${params.toolName}
+- ANVÄNDARE: ${name || 'okänd'}
+- ROLL: ${role}
+- ARBETSPLATS/AVDELNING: ${workplace}
+`.trim();
+};
+
 // --- PII SCANNER FOR UPLOADS ---
 export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; reason?: string }> => {
     const safeText = text || '';
@@ -418,11 +439,23 @@ ${(d.content || '').substring(0, 20000)}
     `;
 
     let systemInstruction = "";
+    const toolContext = buildToolContextBlock({
+        toolName: isRolePlaying ? 'Chatbot (Rollspel/Scenario)' : 'Chatbot (AI-handledare)',
+        user,
+        workplaceName
+    });
 
     if (isRolePlaying) {
-        systemInstruction = `Du spelar en roll i ett vårdscenario som utspelar sig på ${workplaceName}. Agera trovärdigt enligt scenariot. ${securityProtocol}`;
+        systemInstruction = `
+${toolContext}
+
+Du spelar en roll i ett vårdscenario som utspelar sig på ${workplaceName}. Agera trovärdigt enligt scenariot.
+${securityProtocol}
+        `.trim();
     } else {
         systemInstruction = `
+            ${toolContext}
+
             Du är en pedagogisk, metakognitiv AI-Handledare för ${user.name} (${getRoleDisplayName(user.role)}) på ${workplaceName}.
             ROLL-INSTRUKTION: ${getRoleSpecificInstruction(user.role)}
             
@@ -543,18 +576,20 @@ export const getAIDashboardSuggestion = async (user: User, userData: UserData): 
 };
 
 // --- NEW: Generate Care Flow Guide ---
-export const generateCareFlow = async (query: string, role: Role): Promise<CareFlowStep[]> => {
+export const generateCareFlow = async (query: string, role: Role, workplaceName?: string): Promise<CareFlowStep[]> => {
     const ai = getAI();
     const roleDisplay = getRoleDisplayName(role);
     
     // FETCH RELEVANT DOCS to ensure navigator is aware of uploaded files
-    const allDocs = await storage.getCustomDocuments();
+    const allDocs = await storage.getCustomDocuments(workplaceName, role);
     const relevantDocs = selectRelevantDocuments(allDocs, query);
     const docsContext = relevantDocs.map(d => `[DOKUMENT: ${d.title}]\n${d.content.substring(0, 5000)}`).join('\n\n');
 
     try {
         const response = await generateTextWithFallback(ai, {
             contents: `
+                ${buildToolContextBlock({ toolName: 'Vårdflödes-navigator (CareFlow)', role, workplaceName })}
+
                 Du är en expert på vårdprocesser och kliniska riktlinjer.
                 UPPGIFT: Skapa en visuell steg-för-steg vårdflödesguide för: "${query}".
                 MÅLGRUPP: ${roleDisplay} (Anpassa språknivå och detaljrikedom).
