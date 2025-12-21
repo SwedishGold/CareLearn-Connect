@@ -100,6 +100,53 @@ const getAI = (forceSystemKey: boolean = false) => {
     return new GoogleGenAI({ apiKey: finalKey || "MISSING_KEY" });
 };
 
+// --- GEMINI MODEL ROUTING (PRIMARY + FALLBACK) ---
+// Primär: Gemini 3.0 Flash. Fallback: nuvarande modell som appen använder idag.
+const PRIMARY_TEXT_MODEL = 'gemini-3.0-flash' as const;
+const FALLBACK_TEXT_MODEL = 'gemini-2.5-flash' as const;
+
+type GenerateContentParams = Parameters<GoogleGenAI['models']['generateContent']>[0];
+type GenerateContentResponse = Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>;
+type GenerateContentStreamParams = Parameters<GoogleGenAI['models']['generateContentStream']>[0];
+type GenerateContentStreamResponse = Awaited<ReturnType<GoogleGenAI['models']['generateContentStream']>>;
+
+const shouldFallbackToLegacyModel = (error: unknown): boolean => {
+    // Vi faller tillbaka brett eftersom "model not found", quota, 4xx/5xx kan dyka upp olika beroende på SDK/version.
+    // Viktigt: om primär modellen inte är tillgänglig i ett projekt, vill vi alltid kunna fortsätta på nuvarande modell.
+    if (!error) return true;
+    if (typeof error === 'string') return true;
+    if (error instanceof Error) return true;
+    return true;
+};
+
+const generateTextWithFallback = async (
+    ai: GoogleGenAI,
+    request: Omit<GenerateContentParams, 'model'>,
+    meta?: { feature?: string }
+): Promise<GenerateContentResponse> => {
+    try {
+        return await ai.models.generateContent({ ...request, model: PRIMARY_TEXT_MODEL } as GenerateContentParams);
+    } catch (error) {
+        if (!shouldFallbackToLegacyModel(error)) throw error;
+        console.warn(`[Gemini] Primär modell misslyckades (${PRIMARY_TEXT_MODEL})${meta?.feature ? ` för ${meta.feature}` : ''}. Faller tillbaka till ${FALLBACK_TEXT_MODEL}.`, error);
+        return await ai.models.generateContent({ ...request, model: FALLBACK_TEXT_MODEL } as GenerateContentParams);
+    }
+};
+
+const generateTextStreamWithFallback = async (
+    ai: GoogleGenAI,
+    request: Omit<GenerateContentStreamParams, 'model'>,
+    meta?: { feature?: string }
+): Promise<GenerateContentStreamResponse> => {
+    try {
+        return await ai.models.generateContentStream({ ...request, model: PRIMARY_TEXT_MODEL } as GenerateContentStreamParams);
+    } catch (error) {
+        if (!shouldFallbackToLegacyModel(error)) throw error;
+        console.warn(`[Gemini] Primär stream-modell misslyckades (${PRIMARY_TEXT_MODEL})${meta?.feature ? ` för ${meta.feature}` : ''}. Faller tillbaka till ${FALLBACK_TEXT_MODEL}.`, error);
+        return await ai.models.generateContentStream({ ...request, model: FALLBACK_TEXT_MODEL } as GenerateContentStreamParams);
+    }
+};
+
 // --- PII SCANNER FOR UPLOADS ---
 export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; reason?: string }> => {
     const safeText = text || '';
@@ -112,8 +159,7 @@ export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; r
     // 2. AI-based Check (Smarter)
     const ai = getAI();
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Analysera följande text utdrag för känsliga personuppgifter (PII) som bryter mot GDPR/Patientsekretess.
                 Leta efter: Namn på patienter, Adresser, Telefonnummer, Personnummer, Detaljerade sjukdomsberättelser kopplade till individ.
@@ -123,7 +169,7 @@ export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; r
                 Svara ENDAST med JSON: { "safe": boolean, "reason": string | null }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'PII-scan' });
         
         const result = parseAIJSON<{ safe: boolean, reason: string | null }>(response.text || '{}');
         if (!result.safe) {
@@ -167,8 +213,7 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
     // Attempt 1: With Google Search (Deep Research)
     try {
         console.log("Generating structure (Attempt 1 - Deep Research Mode)...");
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', 
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 INSTRUKTION FÖR FORSKNING (STEG 1):
                 Använd Google Sök för att hitta så mycket specifik information som möjligt om "${workplaceName}".
@@ -185,7 +230,7 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
                 ${basePrompt}
             `,
             config: { tools: [{ googleSearch: {} }] } // Only tools allowed, no responseMimeType
-        });
+        }, { feature: 'generateAppStructure (deep research)' });
 
         return parseAIJSON(response.text || '{}');
     } catch (error) {
@@ -193,11 +238,10 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
         
         // Attempt 2: Without Tools (Internal Knowledge - Safer JSON)
         try {
-            const responseRetry = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+            const responseRetry = await generateTextWithFallback(ai, {
                 contents: basePrompt,
                 config: { responseMimeType: "application/json" }
-            });
+            }, { feature: 'generateAppStructure (no tools)' });
             return parseAIJSON(responseRetry.text || '{}');
         } catch (retryError) {
             console.error("Structure Generation Attempt 2 failed:", retryError);
@@ -215,8 +259,7 @@ export const generateQuizTier = async (workplaceName: string, role: Role, specia
     const count = 30;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Skapa ett kunskapstest för en ${roleDisplay} på "${workplaceName}" (${specialty}).
                 
@@ -242,7 +285,7 @@ export const generateQuizTier = async (workplaceName: string, role: Role, specia
                 Returnera ENDAST JSON. Ingen annan text.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: `generateQuizTier (${tier})` });
 
         const questions = parseAIJSON<KnowledgeTestQuestion[]>(response.text || '[]');
         
@@ -292,7 +335,7 @@ const getProgressionContext = (userData: UserData): string => {
 
 // --- NEW: SMART CONTEXT SELECTOR (OPTIMIZATION) ---
 const selectRelevantDocuments = (docs: CustomDocument[], query: string): CustomDocument[] => {
-    // Gemini 2.5 Flash has a massive context window (1M tokens).
+    // Gemini Flash-modellerna har stor kontext. Vi är generösa för att säkra att uppladdade filer "får plats".
     // To ensure the AI reads user uploaded files, we can be very generous.
     // We prioritize by relevance score but fallback to include everything up to a safe limit.
     
@@ -411,14 +454,13 @@ ${(d.content || '').substring(0, 20000)}
         `;
     }
 
-    const stream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash',
+    const stream = await generateTextStreamWithFallback(ai, {
         contents: history.map(m => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
         config: {
             tools: [{ googleSearch: {} }],
             systemInstruction: systemInstruction
         }
-    });
+    }, { feature: 'chat stream' });
     for await (const chunk of stream) {
         yield chunk.text || '';
     }
@@ -454,8 +496,7 @@ export const getAIDashboardSuggestion = async (user: User, userData: UserData): 
     const lastLog = userData.logbookEntries.length > 0 ? userData.logbookEntries[userData.logbookEntries.length - 1].text : "Inga inlägg än.";
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en strategisk och peppande handledare för ${user.name} (${getRoleDisplayName(user.role)}).
                 Din uppgift är att planera dagens uppdrag.
@@ -481,7 +522,7 @@ export const getAIDashboardSuggestion = async (user: User, userData: UserData): 
                 }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'dashboard suggestion' });
 
         const result = parseAIJSON<DailySuggestion>(response.text || '{}');
         
@@ -512,8 +553,7 @@ export const generateCareFlow = async (query: string, role: Role): Promise<CareF
     const docsContext = relevantDocs.map(d => `[DOKUMENT: ${d.title}]\n${d.content.substring(0, 5000)}`).join('\n\n');
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expert på vårdprocesser och kliniska riktlinjer.
                 UPPGIFT: Skapa en visuell steg-för-steg vårdflödesguide för: "${query}".
@@ -541,7 +581,7 @@ export const generateCareFlow = async (query: string, role: Role): Promise<CareF
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'generateCareFlow' });
 
         return parseAIJSON<CareFlowStep[]>(response.text || '[]');
     } catch (error) {
@@ -556,8 +596,7 @@ export const generateCareFlowFromContext = async (docContent: string, docTitle: 
     const roleDisplay = getRoleDisplayName(role);
     
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expert på att omvandla tunga vårdtexter till pedagogiska flödesscheman.
                 
@@ -585,7 +624,7 @@ export const generateCareFlowFromContext = async (docContent: string, docTitle: 
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'generateCareFlowFromContext' });
 
         return parseAIJSON<CareFlowStep[]>(response.text || '[]');
     } catch (error) {
@@ -615,8 +654,7 @@ export const generateDailyChallenge = async (role: Role, userData: UserData): Pr
     const lastLogbookEntry = userData.logbookEntries.slice(-1)[0]?.text || "Ingen inlägg än.";
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expert mentor för en ${roleDisplay} på ${workplace}.
                 Skapa dagens kliniska utmaning anpassad efter användarens faktiska behov.
@@ -648,7 +686,7 @@ export const generateDailyChallenge = async (role: Role, userData: UserData): Pr
                 }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'daily challenge' });
 
         return parseAIJSON<DailyChallenge>(response.text || '{}');
     } catch (error) {
@@ -683,8 +721,7 @@ export const getAIFeedbackAnalysis = async (feedback: FeedbackEntry[]): Promise<
     ).join('\n');
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en strategisk produktanalytiker. Analysera följande feedback-data från användare av vårdplattformen CareLearn.
                 
@@ -708,7 +745,7 @@ export const getAIFeedbackAnalysis = async (feedback: FeedbackEntry[]): Promise<
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'feedback analysis' });
 
         return parseAIJSON<FeedbackAnalysis>(response.text || '{}');
     } catch (error) {
@@ -756,8 +793,7 @@ export const generateQuizFromDocument = async (content: string): Promise<Knowled
     const ai = getAI();
     try {
         const safeContent = content.substring(0, 100000); // Token limit safeguard
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expertpedagog inom vård och omsorg.
                 Din uppgift är att skapa ett kunskapstest baserat EXKLUSIVT på texten nedan.
@@ -784,7 +820,7 @@ export const generateQuizFromDocument = async (content: string): Promise<Knowled
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'quiz from document' });
 
         const questions = parseAIJSON<KnowledgeTestQuestion[]>(response.text || '[]');
         return questions.map((q, i) => ({ ...q, originalIndex: i + 1, verified: false }));
@@ -804,8 +840,7 @@ export const moderateContent = async (text: string): Promise<{ allowed: boolean;
             return { allowed: false, reason: "Innehåller personuppgifter/patientdata." };
         }
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är moderator och pedagogisk AI-Handledare för "CareLearn Connect", ett socialt nätverk för vårdpersonal och studenter.
                 
@@ -832,7 +867,7 @@ export const moderateContent = async (text: string): Promise<{ allowed: boolean;
                 }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'moderation' });
 
         return parseAIJSON(response.text || '{}');
     } catch (error) {
@@ -846,8 +881,7 @@ export const moderateContent = async (text: string): Promise<{ allowed: boolean;
 export const summarizeDocumentContent = async (content: string): Promise<string> => {
     const ai = getAI();
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en pedagogisk assistent för vårdpersonal.
                 Sammanfatta följande dokumentinnehåll på ett tydligt och strukturerat sätt.
@@ -857,7 +891,7 @@ export const summarizeDocumentContent = async (content: string): Promise<string>
                 DOKUMENTINNEHÅLL:
                 "${content.substring(0, 50000)}"
             `,
-        });
+        }, { feature: 'summarize document' });
         return response.text || "Kunde inte generera sammanfattning.";
     } catch (e) {
         console.error("Summary failed:", e);
@@ -913,13 +947,12 @@ export const getSupervisorChatResponseStream = async function* (user: User, hist
         `;
     }
 
-    const stream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash',
+    const stream = await generateTextStreamWithFallback(ai, {
         contents: history.map(m => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
         config: {
             systemInstruction: systemInstruction
         }
-    });
+    }, { feature: 'supervisor chat stream' });
 
     for await (const chunk of stream) {
         yield chunk.text || '';
@@ -958,8 +991,7 @@ export const getSupervisorDashboardInsights = async (studentData: any[]): Promis
 
     const ai = getAI(true); // Force system key
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Analysera följande studentdata för en handledare.
                 DATA: ${JSON.stringify(summary)}
@@ -973,7 +1005,7 @@ export const getSupervisorDashboardInsights = async (studentData: any[]): Promis
                 
                 Använd inte JSON, svara med vanlig text/markdown.
             `
-        });
+        }, { feature: 'supervisor dashboard insights' });
         return response.text || "Kunde inte generera insikter.";
     } catch (e) {
         console.error("Supervisor Insights Failed:", e);
@@ -989,8 +1021,7 @@ export const getAIMetacognitivePrompt = async (goalText: string, reflection: str
 export const getAIFeedbackOnTranscript = async (transcript: any[], scenario: any) => {
     const ai = getAI(true);
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Analysera transkriptet från en kommunikationsövning mellan en vårdstudent och en simulerad patient.
                 SCENARIO: ${scenario.title} - ${scenario.mission}
@@ -1003,7 +1034,7 @@ export const getAIFeedbackOnTranscript = async (transcript: any[], scenario: any
                 
                 Svara med uppmuntrande och konstruktiv ton.
             `
-        });
+        }, { feature: 'feedback on transcript' });
         return response.text || "Ingen feedback kunde genereras.";
     } catch(e) {
         return "Kunde inte ansluta till AI för feedback.";
@@ -1020,8 +1051,7 @@ export const getAIAssistedWeeklyReport = async (student: User, data: UserData): 
     const goalsRated = Object.values(data.goalsProgress || {}).filter((g: any) => g.rating > 0).length;
     
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en erfaren pedagogisk handledare. Skapa ett underlag för ett handledningssamtal med studenten ${student.name} (${student.role}).
                 
@@ -1038,7 +1068,7 @@ export const getAIAssistedWeeklyReport = async (student: User, data: UserData): 
                 
                 Håll tonen professionell, stöttande och objektiv.
             `
-        });
+        }, { feature: 'weekly report' });
         return response.text || "Kunde inte generera rapport.";
     } catch (e) {
         console.error("Report generation failed", e);
@@ -1061,8 +1091,7 @@ export const getAITeachingTips = async (): Promise<string> => {
 export const getAIConstructiveFeedbackTips = async (): Promise<string> => {
     const ai = getAI(true);
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en erfaren pedagogisk handledare inom vården.
                 Ge 5 konkreta och handfasta tips på hur man ger konstruktiv feedback till en student (USK/SSK).
@@ -1077,7 +1106,7 @@ export const getAIConstructiveFeedbackTips = async (): Promise<string> => {
                 
                 Använd Markdown för formatering med rubriker och punktlistor.
             `
-        });
+        }, { feature: 'constructive feedback tips' });
         return response.text || "Inga tips kunde genereras.";
     } catch (error) {
         console.error("Feedback Tips Error:", error);
@@ -1088,8 +1117,7 @@ export const getAIConstructiveFeedbackTips = async (): Promise<string> => {
 export const getAIDifficultConversationTips = async (): Promise<string> => {
     const ai = getAI(true);
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som expert på kommunikation och ledarskap inom vården.
                 Ge en steg-för-steg guide för hur en handledare genomför ett "svårt samtal" med en student som riskerar att bli underkänd, har brister i bemötandet eller attitydproblem.
@@ -1102,7 +1130,7 @@ export const getAIDifficultConversationTips = async (): Promise<string> => {
                 
                 Använd Markdown för formatering med rubriker och punktlistor.
             `
-        });
+        }, { feature: 'difficult conversation tips' });
         return response.text || "Inga tips kunde genereras.";
     } catch (error) {
         console.error("Difficult Conversation Tips Error:", error);
@@ -1114,8 +1142,7 @@ export const getAIDifficultConversationTips = async (): Promise<string> => {
 export const generateUserProfile = async (name: string, role: Role, workplace: string): Promise<AIGeneratedProfile> => {
     const ai = getAI(true); // Use system key
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 INSTRUKTION FÖR FORSKNING (STEG 1):
                 Använd Google Sök för att hitta specifik information om "${workplace}".
@@ -1140,21 +1167,20 @@ export const generateUserProfile = async (name: string, role: Role, workplace: s
             config: { 
                 tools: [{ googleSearch: {} }] // Only tools allowed, no responseMimeType
             }
-        });
+        }, { feature: 'generate user profile (with search)' });
         
         return parseAIJSON<AIGeneratedProfile>(response.text || '{}');
     } catch (e) {
         console.error("Profile gen failed, attempting fallback...", e);
         // Fallback profile if search fails, try without tools
         try {
-             const responseRetry = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+             const responseRetry = await generateTextWithFallback(ai, {
                 contents: `
                     Generera en professionell profil för ${name} (${role}) på ${workplace}.
                     JSON format: { "bio": "...", "strengths": [], "learningTips": "...", "welcomeMessage": "..." }
                 `,
                 config: { responseMimeType: "application/json" }
-            });
+            }, { feature: 'generate user profile (no tools)' });
             return parseAIJSON<AIGeneratedProfile>(responseRetry.text || '{}');
         } catch (retryError) {
              return {
