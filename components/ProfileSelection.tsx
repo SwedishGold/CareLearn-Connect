@@ -67,7 +67,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
                 }
             } catch (e) {
                 console.warn("Could not load registration config, falling back to defaults.");
-                if (!newWorkplace) setNewWorkplace('Avdelning 51');
+                if (!newWorkplace) setNewWorkplace('Avdelning 51 PIVA Sundsvall');
             }
         };
         loadConfig();
@@ -388,14 +388,14 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
                                                 required
                                             >
                                                 <option value="" disabled>Välj avdelning...</option>
-                                                {(allowedWorkplaces.length ? allowedWorkplaces : ['Avdelning 51', 'Avdelning 7']).map((wp) => (
+                                                {(allowedWorkplaces.length ? allowedWorkplaces : ['Avdelning 51 PIVA Sundsvall', 'Avdelning 7 Sundsvall']).map((wp) => (
                                                     <option key={wp} value={wp}>{wp}</option>
                                                 ))}
                                             </select>
                                             <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/60 text-xs text-slate-300 leading-relaxed">
                                                 <div className="font-semibold text-slate-200 mb-1">Beta: avdelningar är låsta</div>
                                                 <div className="text-slate-400">
-                                                    {registrationConfig?.betaInfoText || 'Just nu är endast Avdelning 51 och Avdelning 7 öppna för egenregistrering. Fler avdelningar kommer.'}
+                                                    {registrationConfig?.betaInfoText || 'Just nu är endast Avdelning 51 PIVA Sundsvall och Avdelning 7 Sundsvall öppna för egenregistrering. Fler avdelningar kommer.'}
                                                 </div>
                                                 <div className="mt-2 text-slate-300">
                                                     Vid intresse av att ansluta fler avdelningar, kontakta utvecklaren:

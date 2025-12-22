@@ -90,13 +90,37 @@ const normalizeWorkplace = (workplace: string): string => (workplace || '').trim
 export const getRegistrationConfig = async (): Promise<RegistrationConfig> => {
     const ref = db.collection('settings').doc(REGISTRATION_SETTINGS_DOC_ID);
     const snap = await ref.get();
-    if (snap.exists) return snap.data() as RegistrationConfig;
+    if (snap.exists) {
+        const existing = snap.data() as RegistrationConfig;
+
+        // Auto-migration: make workplaces unambiguous (prevents AI/search from "choosing" the wrong unit)
+        const migratedAllowed = (existing.allowedWorkplaces || []).map(w => {
+            const trimmed = (w || '').trim();
+            if (trimmed === 'Avdelning 51') return 'Avdelning 51 PIVA Sundsvall';
+            if (trimmed === 'Avdelning 7') return 'Avdelning 7 Sundsvall';
+            if (trimmed === 'Avd 51') return 'Avdelning 51 PIVA Sundsvall';
+            if (trimmed === 'Avd 7') return 'Avdelning 7 Sundsvall';
+            return trimmed;
+        }).filter(Boolean);
+
+        const needsUpdate =
+            JSON.stringify(migratedAllowed) !== JSON.stringify(existing.allowedWorkplaces || []);
+
+        if (needsUpdate) {
+            const next: RegistrationConfig = { ...existing, allowedWorkplaces: migratedAllowed };
+            await ref.set(next);
+            return next;
+        }
+
+        return existing;
+    }
 
     const defaults: RegistrationConfig = {
-        allowedWorkplaces: ['Avdelning 51', 'Avdelning 7'],
+        // Fullständiga namn för att undvika förväxling vid search/AI (t.ex. "Avdelning 7" på annan ort).
+        allowedWorkplaces: ['Avdelning 51 PIVA Sundsvall', 'Avdelning 7 Sundsvall'],
         blockedSignupRoles: ['admin', 'huvudhandledare', 'developer'],
         betaInfoText:
-            'CareLearn Connect är i beta. Just nu är endast Avdelning 51 och Avdelning 7 öppna för egenregistrering. Fler avdelningar kommer när rutiner/PM finns uppladdade i kunskapsbanken.',
+            'CareLearn Connect är i beta. Just nu är endast Avdelning 51 PIVA Sundsvall och Avdelning 7 Sundsvall öppna för egenregistrering. Fler avdelningar kommer när rutiner/PM finns uppladdade i kunskapsbanken.',
         developerContactEmail: 'Andreas.guldberg@gmail.com',
         developerLinkedInUrl: 'https://www.linkedin.com/in/andreas-hillborgh-51581371?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app'
     };
@@ -617,7 +641,8 @@ export const clearDepartmentSettings = async () => {
 export const applyCustomAppSettings = (): DepartmentSettings => {
     return {
         appName: 'CareLearn',
-        workplaceName: 'Avdelning 51',
+        // Default should be explicit to avoid ambiguity in AI/search contexts.
+        workplaceName: 'Avdelning 51 PIVA Sundsvall',
         specialty: 'psykiatri',
         checklist: APP_DATA.checklist.join('\n'),
         knowledgeRequirements: APP_DATA.knowledgeRequirements.map(k => k.text).join('\n'),
@@ -831,7 +856,7 @@ export const deletePost = async (postId: string) => {
 export const seedDemoStudentData = () => { /* No-op in Cloud mode */ };
 
 export const injectDemoData = async (): Promise<User> => {
-    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', 'Avdelning 51');
+    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', 'Avdelning 51 PIVA Sundsvall');
 };
 
 export const exportAllData = async (): Promise<string> => {

@@ -354,7 +354,7 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
                         onChange={(e) => setAdminWorkplace(e.target.value)}
                         className="p-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                     >
-                        {(registrationConfig?.allowedWorkplaces || ['Avdelning 51', 'Avdelning 7']).map(wp => (
+                        {(registrationConfig?.allowedWorkplaces || ['Avdelning 51 PIVA Sundsvall', 'Avdelning 7 Sundsvall']).map(wp => (
                             <option key={wp} value={wp}>{wp}</option>
                         ))}
                     </select>

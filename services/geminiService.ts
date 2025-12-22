@@ -214,14 +214,21 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
         ? 'Sjuksköterskeprogrammet (Mittuniversitetet/Högskolor)' 
         : 'Vård- och omsorgscollege Västernorrland (Komvux)';
 
+    const validateWorkplaceAnchoring = (structure: any, wp: string) => {
+        const needle = (wp || '').trim().toLowerCase();
+        const desc = (structure?.workplaceDescription || '').toLowerCase();
+        return !needle || desc.includes(needle);
+    };
+
     const basePrompt = `
         Du är en expertpedagog och vårdutvecklare i Region Västernorrland.
         
         UPPGIFT:
         Skapa en utbildningsprofil för en ${roleDisplay} på: "${workplaceName}".
+        VIKTIGT: Du får INTE byta arbetsplats. Om namnet är tvetydigt ska du INTE anta en annan ort/enhet. Utgå alltid från exakt angiven arbetsplats.
 
         GENERERA JSON (Strict format):
-        - "workplaceDescription": En detaljerad kontextbeskrivning om enheten (används av Chatbot).
+        - "workplaceDescription": En detaljerad kontextbeskrivning om enheten (används av Chatbot). KRAV: måste innehålla exakt arbetsplatssträng "${workplaceName}".
         - "checklist": 15 konkreta introduktionspunkter (Minst 5 unika för enheten, t.ex. specifik utrustning).
         - "goals": 6 konkreta lärandemål kopplade till kursplanen.
         - "specialty": (psykiatri, aldreomsorg, akutsjukvard, lss, primarvard, annat).
@@ -242,6 +249,7 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
                 1. Vilka patientgrupper vårdas där?
                 2. Vilka specifika diagnoser eller vårdbehov är vanliga?
                 3. Finns det offentliga riktlinjer, verksamhetsberättelser eller nyheter om enheten?
+                VIKTIGT: Du får INTE byta arbetsplats. Om du inte kan bekräfta att en träff gäller exakt "${workplaceName}", skriv mer generiskt men behåll arbetsplatsnamnet.
                 
                 INSTRUKTION FÖR SKAPANDE (STEG 2):
                 Använd informationen du hittade ovan för att skapa en MYCKET specifik och anpassad profil.
@@ -253,7 +261,11 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
             config: { tools: [{ googleSearch: {} }] } // Only tools allowed, no responseMimeType
         }, { feature: 'generateAppStructure (deep research)' });
 
-        return parseAIJSON(response.text || '{}');
+        const parsed = parseAIJSON<any>(response.text || '{}');
+        if (!validateWorkplaceAnchoring(parsed, workplaceName)) {
+            throw new Error(`App structure is not anchored to selected workplace "${workplaceName}".`);
+        }
+        return parsed;
     } catch (error) {
         console.warn("Structure Generation Attempt 1 failed (Deep Research). Retrying without tools...", error);
         
@@ -263,7 +275,19 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
                 contents: basePrompt,
                 config: { responseMimeType: "application/json" }
             }, { feature: 'generateAppStructure (no tools)' });
-            return parseAIJSON(responseRetry.text || '{}');
+            const parsed = parseAIJSON<any>(responseRetry.text || '{}');
+            if (!validateWorkplaceAnchoring(parsed, workplaceName)) {
+                console.warn("Structure not anchored to workplace; returning conservative fallback.");
+                return {
+                    workplaceDescription: `Arbetsplats: ${workplaceName}. (Beta) Kontext saknar verifierad enhetsprofil – svar hålls generiska tills lokala rutiner/PM finns i kunskapsbanken.`,
+                    checklist: APP_DATA.checklist.slice(0, 15),
+                    goals: APP_DATA.knowledgeRequirements.map(k => k.text).slice(0, 6),
+                    specialty: 'annat',
+                    welcomeMessage: `Välkommen till ${workplaceName}!`,
+                    resources: []
+                };
+            }
+            return parsed;
         } catch (retryError) {
             console.error("Structure Generation Attempt 2 failed:", retryError);
             throw retryError;
@@ -1176,12 +1200,22 @@ export const getAIDifficultConversationTips = async (): Promise<string> => {
 // --- NEW: Generate User Profile (Registration) ---
 export const generateUserProfile = async (name: string, role: Role, workplace: string): Promise<AIGeneratedProfile> => {
     const ai = getAI(true); // Use system key
+    const validateWorkplaceAnchoring = (profile: AIGeneratedProfile, workplaceName: string) => {
+        const wp = (workplaceName || '').trim();
+        const bio = (profile?.bio || '').toLowerCase();
+        const welcome = (profile?.welcomeMessage || '').toLowerCase();
+        const needle = wp.toLowerCase();
+        // Krav: modellen får inte "byta" arbetsplats. Den måste minst referera till exakt sträng någonstans.
+        if (needle && (bio.includes(needle) || welcome.includes(needle))) return true;
+        return false;
+    };
     try {
         const response = await generateTextWithFallback(ai, {
             contents: `
                 INSTRUKTION FÖR FORSKNING (STEG 1):
                 Använd Google Sök för att hitta specifik information om "${workplace}".
                 Leta efter vilken typ av vård som bedrivs, patientgrupper och om det finns någon specifik profil.
+                VIKTIGT: Du får INTE byta arbetsplats. Om du hittar flera träffar med liknande namn ska du inte "välja en annan". Om du är osäker: skriv generiskt men behåll exakt arbetsplatsnamn.
                 
                 INSTRUKTION FÖR SKAPANDE (STEG 2):
                 Baserat på din research och den angivna rollen, generera en professionell och personlig profil för en ny användare i utbildningsplattformen CareLearn.
@@ -1189,14 +1223,14 @@ export const generateUserProfile = async (name: string, role: Role, workplace: s
                 ANVÄNDARE:
                 Namn: ${name}
                 Roll: ${getRoleDisplayName(role)}
-                Arbetsplats: ${workplace}
+                Arbetsplats (EXAKT STRÄNG, får ej ändras): ${workplace}
                 
                 GENERERA JSON:
                 {
-                    "bio": "En kort, välkomnande biografi på svenska som nämner den specifika avdelningens inriktning (max 3 meningar).",
+                    "bio": "En kort, välkomnande biografi på svenska (max 3 meningar). KRAV: måste innehålla exakt arbetsplatssträng: '${workplace}'.",
                     "strengths": ["Styrka 1", "Styrka 2", "Styrka 3"] (Kopplat till rollen och arbetsplatsen),
                     "learningTips": "Ett konkret studietips som är relevant för just denna typ av vård.",
-                    "welcomeMessage": "Ett peppande välkomstmeddelande anpassat till enheten."
+                    "welcomeMessage": "Ett peppande välkomstmeddelande anpassat till enheten. KRAV: måste innehålla exakt arbetsplatssträng: '${workplace}'."
                 }
             `,
             config: { 
@@ -1204,25 +1238,38 @@ export const generateUserProfile = async (name: string, role: Role, workplace: s
             }
         }, { feature: 'generate user profile (with search)' });
         
-        return parseAIJSON<AIGeneratedProfile>(response.text || '{}');
+        const parsed = parseAIJSON<AIGeneratedProfile>(response.text || '{}');
+        if (!validateWorkplaceAnchoring(parsed, workplace)) {
+            throw new Error(`AI-profile is not anchored to selected workplace "${workplace}".`);
+        }
+        return parsed;
     } catch (e) {
         console.error("Profile gen failed, attempting fallback...", e);
         // Fallback profile if search fails, try without tools
         try {
              const responseRetry = await generateTextWithFallback(ai, {
                 contents: `
-                    Generera en professionell profil för ${name} (${role}) på ${workplace}.
-                    JSON format: { "bio": "...", "strengths": [], "learningTips": "...", "welcomeMessage": "..." }
+                    Du är en professionell, pedagogisk assistent. Du får INTE byta arbetsplats.
+                    Arbetsplats (EXAKT STRÄNG): ${workplace}
+                    Roll: ${getRoleDisplayName(role)}
+                    Namn: ${name}
+
+                    Returnera ENDAST JSON i detta format:
+                    { "bio": "MÅSTE innehålla exakt '${workplace}'", "strengths": [], "learningTips": "...", "welcomeMessage": "MÅSTE innehålla exakt '${workplace}'" }
                 `,
                 config: { responseMimeType: "application/json" }
             }, { feature: 'generate user profile (no tools)' });
-            return parseAIJSON<AIGeneratedProfile>(responseRetry.text || '{}');
+            const parsed = parseAIJSON<AIGeneratedProfile>(responseRetry.text || '{}');
+            if (!validateWorkplaceAnchoring(parsed, workplace)) {
+                throw new Error(`AI-profile fallback is not anchored to selected workplace "${workplace}".`);
+            }
+            return parsed;
         } catch (retryError) {
              return {
-                bio: `Välkommen till CareLearn!`,
+                bio: `Välkommen till CareLearn! Arbetsplats: ${workplace}.`,
                 strengths: ["Engagemang", "Nyfikenhet", "Samarbetsvilja"],
                 learningTips: "Ta vara på varje tillfälle att lära i praktiken.",
-                welcomeMessage: "Välkommen!"
+                welcomeMessage: `Välkommen till ${workplace}!`
             };
         }
     }
