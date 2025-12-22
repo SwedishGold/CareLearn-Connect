@@ -1,6 +1,6 @@
 
 import { User, UserData, Role, LogbookEntry, DepartmentSettings, CustomDocument, Notification, Post, Credential, ScheduleEntry, PastPlacement, UnansweredQuestion, FlaggedContentEntry, FeedbackEntry, Workplace, RegistrationConfig } from '../types';
-import { APP_DATA } from '../constants';
+import { APP_DATA, VASTERNORRLAND_UNITS } from '../constants';
 import { DEMO_USER_DATA } from '../constants/demoData';
 import { generateUserProfile } from '../services/geminiService';
 
@@ -87,37 +87,107 @@ const REGISTRATION_SETTINGS_DOC_ID = 'registration';
 
 const normalizeWorkplace = (workplace: string): string => (workplace || '').trim();
 
+const slugify = (value: string): string =>
+    (value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^\p{L}\p{N}]+/gu, '-') // keep letters/numbers (unicode)
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+
+const getWorkplaceDocIdForName = (name: string): string => `wp-${slugify(name) || 'unknown'}`;
+
+const ensureWorkplaceExists = async (name: string): Promise<{ id: string; name: string }> => {
+    const normalized = normalizeWorkplace(name);
+    const id = getWorkplaceDocIdForName(normalized);
+    const ref = db.collection('workplaces').doc(id);
+    const snap = await ref.get();
+    if (snap.exists) {
+        const data = snap.data();
+        return { id, name: (data?.name as string) || normalized };
+    }
+
+    const unit = (VASTERNORRLAND_UNITS || []).find(u => (u.name || '').trim().toLowerCase() === normalized.toLowerCase());
+    const city =
+        normalized.toLowerCase().includes('sundsvall') ? 'Sundsvall' :
+        normalized.toLowerCase().includes('örnsköldsvik') ? 'Örnsköldsvik' :
+        normalized.toLowerCase().includes('sollefteå') ? 'Sollefteå' :
+        'Okänd';
+
+    const workplace: Workplace = {
+        id,
+        name: normalized,
+        city,
+        specialty: (unit?.specialty || 'annat') as any,
+        description: `Beta-seedad arbetsplats: ${normalized}`,
+        checklist: APP_DATA.checklist.join('\n'),
+        knowledgeRequirements: APP_DATA.knowledgeRequirements.map(k => k.text).join('\n'),
+        knowledgeTestQuestionsUsk: JSON.stringify(APP_DATA.knowledgeTestQuestions.usk),
+        knowledgeTestQuestionsSsk: JSON.stringify(APP_DATA.knowledgeTestQuestions.ssk),
+        memberCount: 0,
+        createdByType: 'AI',
+        searchKey: normalized.toLowerCase()
+    };
+
+    await ref.set(workplace);
+    return { id, name: normalized };
+};
+
+// Exported wrapper used by Developer tooling to unlock workplaces deterministically.
+export const ensureWorkplaceForRegistration = async (name: string): Promise<{ id: string; name: string }> => {
+    return await ensureWorkplaceExists(name);
+};
+
 export const getRegistrationConfig = async (): Promise<RegistrationConfig> => {
     const ref = db.collection('settings').doc(REGISTRATION_SETTINGS_DOC_ID);
     const snap = await ref.get();
     if (snap.exists) {
-        const existing = snap.data() as RegistrationConfig;
+        const raw = snap.data() as any;
 
-        // Auto-migration: make workplaces unambiguous (prevents AI/search from "choosing" the wrong unit)
-        const migratedAllowed = (existing.allowedWorkplaces || []).map(w => {
-            const trimmed = (w || '').trim();
-            if (trimmed === 'Avdelning 51') return 'Avdelning 51 PIVA Sundsvall';
-            if (trimmed === 'Avdelning 7') return 'Avdelning 7 Sundsvall';
-            if (trimmed === 'Avd 51') return 'Avdelning 51 PIVA Sundsvall';
-            if (trimmed === 'Avd 7') return 'Avdelning 7 Sundsvall';
-            return trimmed;
-        }).filter(Boolean);
+        // Migration: older versions stored allowedWorkplaces as string[]
+        const rawAllowed = raw.allowedWorkplaces;
+        const migratedNames: string[] = Array.isArray(rawAllowed)
+            ? rawAllowed.map((w: any) => {
+                const trimmed = String(w?.name ?? w ?? '').trim();
+                if (trimmed === 'Avdelning 51' || trimmed === 'Avd 51') return 'Avdelning 51 PIVA Sundsvall';
+                if (trimmed === 'Avdelning 7' || trimmed === 'Avd 7') return 'Avdelning 7 Sundsvall';
+                return trimmed;
+            }).filter(Boolean)
+            : [];
 
-        const needsUpdate =
-            JSON.stringify(migratedAllowed) !== JSON.stringify(existing.allowedWorkplaces || []);
+        // If already in object form, keep names but still ensure workplace docs exist
+        const existingObjects: { id: string; name: string }[] = Array.isArray(rawAllowed) && rawAllowed.length && typeof rawAllowed[0] === 'object'
+            ? rawAllowed.map((w: any) => ({ id: String(w.id || ''), name: String(w.name || '').trim() })).filter((w: any) => w.id && w.name)
+            : [];
 
-        if (needsUpdate) {
-            const next: RegistrationConfig = { ...existing, allowedWorkplaces: migratedAllowed };
-            await ref.set(next);
-            return next;
-        }
+        const allowedFinal: { id: string; name: string }[] = existingObjects.length
+            ? await Promise.all(existingObjects.map(async (w) => {
+                // Ensure doc exists and name is current
+                const ensured = await ensureWorkplaceExists(w.name);
+                return { id: w.id || ensured.id, name: ensured.name };
+            }))
+            : await Promise.all(migratedNames.map(async (n) => ensureWorkplaceExists(n)));
 
-        return existing;
+        const next: RegistrationConfig = {
+            allowedWorkplaces: allowedFinal,
+            blockedSignupRoles: Array.isArray(raw.blockedSignupRoles) ? raw.blockedSignupRoles : ['admin', 'huvudhandledare', 'developer'],
+            betaInfoText: String(raw.betaInfoText || 'CareLearn Connect är i beta.'),
+            developerContactEmail: String(raw.developerContactEmail || 'Andreas.guldberg@gmail.com'),
+            developerLinkedInUrl: String(raw.developerLinkedInUrl || 'https://www.linkedin.com/in/andreas-hillborgh-51581371?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app'),
+        };
+
+        await ref.set(next);
+        return next;
     }
 
+    const defaultWorkplaces = await Promise.all([
+        ensureWorkplaceExists('Avdelning 51 PIVA Sundsvall'),
+        ensureWorkplaceExists('Avdelning 7 Sundsvall')
+    ]);
+
     const defaults: RegistrationConfig = {
-        // Fullständiga namn för att undvika förväxling vid search/AI (t.ex. "Avdelning 7" på annan ort).
-        allowedWorkplaces: ['Avdelning 51 PIVA Sundsvall', 'Avdelning 7 Sundsvall'],
+        // Use IDs to avoid ambiguity/bias from name-only matching
+        allowedWorkplaces: defaultWorkplaces,
         blockedSignupRoles: ['admin', 'huvudhandledare', 'developer'],
         betaInfoText:
             'CareLearn Connect är i beta. Just nu är endast Avdelning 51 PIVA Sundsvall och Avdelning 7 Sundsvall öppna för egenregistrering. Fler avdelningar kommer när rutiner/PM finns uppladdade i kunskapsbanken.',
@@ -139,11 +209,13 @@ const formatRegistrationContact = (cfg: RegistrationConfig): string =>
 const enforceRegistrationPolicy = async (args: {
     config: RegistrationConfig;
     role: Role;
-    workplace: string;
+    workplaceId?: string;
+    workplaceName?: string;
     allowPrivilegedProvisioning: boolean;
 }): Promise<void> => {
     const role = args.role;
-    const workplace = normalizeWorkplace(args.workplace);
+    const workplaceId = (args.workplaceId || '').trim();
+    const workplace = normalizeWorkplace(args.workplaceName || '');
     const cfg = args.config;
 
     // Developer should not be self-registered via regular signup.
@@ -157,9 +229,16 @@ const enforceRegistrationPolicy = async (args: {
     }
 
     // Workplace must be one of the allowed beta workplaces (for self-signup).
-    const allowed = (cfg.allowedWorkplaces || []).map(normalizeWorkplace).filter(Boolean);
-    if (!workplace || !allowed.includes(workplace)) {
-        throw new Error(`${cfg.betaInfoText}\n\nTillgängliga avdelningar just nu: ${allowed.join(', ') || 'inga'}.\n\n${formatRegistrationContact(cfg)}`);
+    const allowed = (cfg.allowedWorkplaces || []).filter(w => w?.id && w?.name);
+    const allowedIds = allowed.map(w => w.id);
+    const allowedNames = allowed.map(w => w.name);
+    if (!workplaceId || !allowedIds.includes(workplaceId)) {
+        throw new Error(`${cfg.betaInfoText}\n\nTillgängliga avdelningar just nu: ${allowedNames.join(', ') || 'inga'}.\n\n${formatRegistrationContact(cfg)}`);
+    }
+    const canonicalName = allowed.find(w => w.id === workplaceId)?.name;
+    if (canonicalName && workplace && canonicalName !== workplace) {
+        // Fail closed if some caller tries to mismatch ID/name.
+        throw new Error(`Vald avdelning matchar inte. Försök igen och välj avdelning på nytt.`);
     }
 
     // Enforce max 1 admin per workplace (policy across all workplaces).
@@ -167,7 +246,7 @@ const enforceRegistrationPolicy = async (args: {
         const existing = await db
             .collection('users')
             .where('role', '==', 'admin')
-            .where('workplace', '==', workplace)
+            .where('workplaceId', '==', workplaceId)
             .limit(1)
             .get();
         if (!existing.empty) {
@@ -181,13 +260,15 @@ export const createPrivilegedAccount = async (args: {
     email: string;
     temporaryPassword: string;
     role: Role; // should be 'admin' (or other privileged roles if enabled later)
-    workplace: string;
+    workplaceId: string;
+    workplaceName: string;
 }): Promise<User> => {
     const cfg = await getRegistrationConfig();
     await enforceRegistrationPolicy({
         config: cfg,
         role: args.role,
-        workplace: args.workplace,
+        workplaceId: args.workplaceId,
+        workplaceName: args.workplaceName,
         allowPrivilegedProvisioning: true,
     });
 
@@ -197,12 +278,23 @@ export const createPrivilegedAccount = async (args: {
         args.email,
         args.temporaryPassword,
         args.role,
-        args.workplace,
+        args.workplaceName,
         undefined,
         undefined,
-        undefined,
+        args.workplaceId,
         { bypassRegistrationPolicy: true }
     );
+};
+
+// Convenience wrapper for developer UI
+export const createPrivilegedAdminForWorkplace = async (args: {
+    name: string;
+    email: string;
+    temporaryPassword: string;
+    workplaceId: string;
+    workplaceName: string;
+}): Promise<User> => {
+    return await createPrivilegedAccount({ ...args, role: 'admin' });
 };
 
 // --- AUTH SERVICE ---
@@ -227,7 +319,8 @@ export const registerUser = async (
             await enforceRegistrationPolicy({
                 config: registrationConfig,
                 role,
-                workplace,
+                workplaceId,
+                workplaceName: workplace,
                 allowPrivilegedProvisioning: false,
             });
         }
@@ -310,6 +403,7 @@ export const authenticateWithGoogle = async (
     isRegistration: boolean,
     role?: Role,
     workplace?: string,
+    workplaceId?: string,
     aplWeeks?: number
 ): Promise<User> => {
     try {
@@ -347,7 +441,8 @@ export const authenticateWithGoogle = async (
             await enforceRegistrationPolicy({
                 config: registrationConfig,
                 role,
-                workplace,
+                workplaceId,
+                workplaceName: workplace,
                 allowPrivilegedProvisioning: false,
             });
 
@@ -368,6 +463,7 @@ export const authenticateWithGoogle = async (
                 email: email || "",
                 role,
                 workplace,
+                workplaceId: workplaceId || '',
                 googleId: uid, // Mark as google user
                 pin: '1234',
                 connections: [],
@@ -856,7 +952,9 @@ export const deletePost = async (postId: string) => {
 export const seedDemoStudentData = () => { /* No-op in Cloud mode */ };
 
 export const injectDemoData = async (): Promise<User> => {
-    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', 'Avdelning 51 PIVA Sundsvall');
+    const cfg = await getRegistrationConfig();
+    const wp = cfg.allowedWorkplaces?.find(w => w.name.includes('Avdelning 51')) || cfg.allowedWorkplaces?.[0];
+    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', wp?.name || 'Avdelning 51 PIVA Sundsvall', undefined, undefined, wp?.id);
 };
 
 export const exportAllData = async (): Promise<string> => {

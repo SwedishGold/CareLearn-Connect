@@ -83,7 +83,7 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
     const [unlockWorkplaceName, setUnlockWorkplaceName] = useState('');
     const [adminName, setAdminName] = useState('');
     const [adminEmail, setAdminEmail] = useState('');
-    const [adminWorkplace, setAdminWorkplace] = useState('');
+    const [adminWorkplace, setAdminWorkplace] = useState<{ id: string; name: string } | null>(null);
     const [adminTempPassword, setAdminTempPassword] = useState('');
     const [adminCreationResult, setAdminCreationResult] = useState<string | null>(null);
 
@@ -131,7 +131,7 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
         if (!name) return;
         if (!registrationConfig) return;
 
-        const already = (registrationConfig.allowedWorkplaces || []).includes(name);
+        const already = (registrationConfig.allowedWorkplaces || []).some(w => w.name === name);
         if (already) {
             alert("Avdelningen finns redan upplåst för registrering.");
             return;
@@ -145,9 +145,12 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
             return;
         }
 
+        // Create/ensure Workplace doc with deterministic ID, then unlock by ID
+        const ensured = await storage.ensureWorkplaceForRegistration(name);
+
         const next = {
             ...registrationConfig,
-            allowedWorkplaces: [...(registrationConfig.allowedWorkplaces || []), name]
+            allowedWorkplaces: [...(registrationConfig.allowedWorkplaces || []), { id: ensured.id, name: ensured.name }]
         };
         await saveRegistrationConfig(next);
         setUnlockWorkplaceName('');
@@ -156,11 +159,11 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
 
     const handleRemoveWorkplace = useCallback(async (name: string) => {
         if (!registrationConfig) return;
-        const nextAllowed = (registrationConfig.allowedWorkplaces || []).filter(w => w !== name);
+        const nextAllowed = (registrationConfig.allowedWorkplaces || []).filter(w => w.name !== name);
         const next = { ...registrationConfig, allowedWorkplaces: nextAllowed };
         await saveRegistrationConfig(next);
-        if (adminWorkplace === name) {
-            setAdminWorkplace(nextAllowed[0] || '');
+        if (adminWorkplace?.name === name) {
+            setAdminWorkplace(nextAllowed[0] || null);
         }
     }, [registrationConfig, saveRegistrationConfig, adminWorkplace]);
 
@@ -175,21 +178,20 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
         if (!registrationConfig) return;
         const name = adminName.trim();
         const email = adminEmail.trim();
-        const workplace = adminWorkplace.trim();
         const password = adminTempPassword.trim();
 
-        if (!name || !email || !workplace || !password) {
+        if (!name || !email || !adminWorkplace?.id || !adminWorkplace?.name || !password) {
             alert("Fyll i namn, e-post, avdelning och ett temporärt lösenord.");
             return;
         }
 
         try {
-            const user = await storage.createPrivilegedAccount({
+            const user = await storage.createPrivilegedAdminForWorkplace({
                 name,
                 email,
                 temporaryPassword: password,
-                role: 'admin',
-                workplace
+                workplaceId: adminWorkplace.id,
+                workplaceName: adminWorkplace.name
             });
             setAdminCreationResult(`Skapade Admin/Chef-konto för ${user.workplace}. Temporärt lösenord: ${password}`);
             setAdminName('');
@@ -282,10 +284,10 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
                                 <div className="text-sm text-slate-500">Inga avdelningar upplåsta.</div>
                             ) : (
                                 (registrationConfig?.allowedWorkplaces || []).map(wp => (
-                                    <div key={wp} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
-                                        <span className="font-medium text-slate-800 dark:text-slate-200">{wp}</span>
+                                    <div key={wp.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+                                        <span className="font-medium text-slate-800 dark:text-slate-200">{wp.name}</span>
                                         <button
-                                            onClick={() => handleRemoveWorkplace(wp)}
+                                            onClick={() => handleRemoveWorkplace(wp.name)}
                                             className="text-xs font-semibold text-red-600 hover:text-red-500"
                                         >
                                             Ta bort
@@ -350,12 +352,17 @@ const DeveloperDashboard: React.FC<DeveloperDashboardProps> = memo(({ setView })
                         className="p-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                     />
                     <select
-                        value={adminWorkplace}
-                        onChange={(e) => setAdminWorkplace(e.target.value)}
+                        value={adminWorkplace?.id || ''}
+                        onChange={(e) => {
+                            const id = e.target.value;
+                            const selected = (registrationConfig?.allowedWorkplaces || []).find(w => w.id === id) || null;
+                            setAdminWorkplace(selected);
+                        }}
                         className="p-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                     >
-                        {(registrationConfig?.allowedWorkplaces || ['Avdelning 51 PIVA Sundsvall', 'Avdelning 7 Sundsvall']).map(wp => (
-                            <option key={wp} value={wp}>{wp}</option>
+                        <option value="" disabled>Välj avdelning...</option>
+                        {(registrationConfig?.allowedWorkplaces || []).map(wp => (
+                            <option key={wp.id} value={wp.id}>{wp.name}</option>
                         ))}
                     </select>
                     <div className="flex gap-2">

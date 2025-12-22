@@ -63,7 +63,8 @@ export interface Workplace {
 // --- Registration / Beta policy ---
 export interface RegistrationConfig {
   // Which workplaces can be selected during self-signup (beta gating).
-  allowedWorkplaces: string[];
+  // IMPORTANT: use workplace IDs to avoid ambiguity/bias from name-only matching.
+  allowedWorkplaces: { id: string; name: string }[];
   // Roles that require manual provisioning by Developer (cannot self-signup).
   blockedSignupRoles: Role[];
   // Shown in UI and used in error messages.

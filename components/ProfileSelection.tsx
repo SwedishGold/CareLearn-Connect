@@ -10,7 +10,7 @@ interface ProfileSelectionProps {
   users: User[];
   onSelectProfile: (user: User, isLogin?: boolean) => void;
   onUpdateUserPin: (userId: string, pin: string) => void;
-  onCreateProfile: (name: string, role: Role, workplace: string, pin: string, aplWeeks?: number, email?: string, password?: string) => void;
+  onCreateProfile: (name: string, role: Role, workplaceName: string, workplaceId: string, pin: string, aplWeeks?: number, email?: string, password?: string) => void;
 }
 
 // Google Icon Component
@@ -48,6 +48,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
     const [confirmPassword, setConfirmPassword] = useState('');
     const [newRole, setNewRole] = useState<Role | ''>('');
     const [newWorkplace, setNewWorkplace] = useState('');
+    const [newWorkplaceId, setNewWorkplaceId] = useState('');
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [registrationConfig, setRegistrationConfig] = useState<Awaited<ReturnType<typeof storage.getRegistrationConfig>> | null>(null);
     
@@ -63,11 +64,15 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
                 setRegistrationConfig(cfg);
                 // Preselect first allowed workplace for better UX
                 if (!newWorkplace && cfg.allowedWorkplaces?.length) {
-                    setNewWorkplace(cfg.allowedWorkplaces[0]);
+                    setNewWorkplace(cfg.allowedWorkplaces[0].name);
+                    setNewWorkplaceId(cfg.allowedWorkplaces[0].id);
                 }
             } catch (e) {
                 console.warn("Could not load registration config, falling back to defaults.");
-                if (!newWorkplace) setNewWorkplace('Avdelning 51 PIVA Sundsvall');
+                if (!newWorkplace) {
+                    setNewWorkplace('Avdelning 51 PIVA Sundsvall');
+                    setNewWorkplaceId('wp-avdelning-51-piva-sundsvall');
+                }
             }
         };
         loadConfig();
@@ -118,6 +123,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
 
     const handleGoogleSignup = async () => {
         const finalWorkplace = newRole === 'developer' ? 'CareLearn HQ' : newWorkplace;
+        const finalWorkplaceId = newRole === 'developer' ? '' : newWorkplaceId;
         
         if (!newRole) {
             alert("Du måste välja en roll (t.ex. Student) innan du kan gå med via Google.");
@@ -138,7 +144,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
         setIsLoading(true);
         try {
             // First: Register via Google Auth
-            const user = await storage.authenticateWithGoogle(true, newRole, finalWorkplace);
+            const user = await storage.authenticateWithGoogle(true, newRole, finalWorkplace, finalWorkplaceId);
             playLogin();
             // onSelectProfile will be called by AuthStateChanged in App.tsx
             
@@ -199,6 +205,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         const finalWorkplace = newRole === 'developer' ? 'CareLearn HQ' : newWorkplace;
+        const finalWorkplaceId = newRole === 'developer' ? '' : newWorkplaceId;
 
         if (!newName || !newEmail || !newPassword || !confirmPassword || !newRole) {
             alert("Vänligen fyll i alla obligatoriska fält.");
@@ -223,7 +230,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
         setIsLoading(true);
         try {
             // Auth + Firestore creation handled by service via App.tsx callback
-            await onCreateProfile(newName, newRole, finalWorkplace, '1234', undefined, newEmail, newPassword);
+            await onCreateProfile(newName, newRole, finalWorkplace, finalWorkplaceId, '1234', undefined, newEmail, newPassword);
             // If success, App.tsx handles auth state change and redirect
         } catch (error: any) {
             console.error(error);
@@ -383,13 +390,24 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = memo(({ onSelectProfil
                                         <div className="col-span-2 md:col-span-1 space-y-2" ref={workplaceWrapperRef}>
                                             <select
                                                 value={newWorkplace}
-                                                onChange={(e) => setNewWorkplace(e.target.value)}
+                                                onChange={(e) => {
+                                                    const selectedName = e.target.value;
+                                                    const selected = (allowedWorkplaces.length ? allowedWorkplaces : [
+                                                        { id: 'wp-avdelning-51-piva-sundsvall', name: 'Avdelning 51 PIVA Sundsvall' },
+                                                        { id: 'wp-avdelning-7-sundsvall', name: 'Avdelning 7 Sundsvall' }
+                                                    ]).find(w => w.name === selectedName);
+                                                    setNewWorkplace(selectedName);
+                                                    setNewWorkplaceId(selected?.id || '');
+                                                }}
                                                 className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
                                                 required
                                             >
                                                 <option value="" disabled>Välj avdelning...</option>
-                                                {(allowedWorkplaces.length ? allowedWorkplaces : ['Avdelning 51 PIVA Sundsvall', 'Avdelning 7 Sundsvall']).map((wp) => (
-                                                    <option key={wp} value={wp}>{wp}</option>
+                                                {(allowedWorkplaces.length ? allowedWorkplaces : [
+                                                    { id: 'wp-avdelning-51-piva-sundsvall', name: 'Avdelning 51 PIVA Sundsvall' },
+                                                    { id: 'wp-avdelning-7-sundsvall', name: 'Avdelning 7 Sundsvall' }
+                                                ]).map((wp) => (
+                                                    <option key={wp.id} value={wp.name}>{wp.name}</option>
                                                 ))}
                                             </select>
                                             <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/60 text-xs text-slate-300 leading-relaxed">

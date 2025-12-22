@@ -656,7 +656,7 @@ const App: React.FC = () => {
     if (isLogin) setIsLoading(true);
   }, []);
 
-  const handleCreateProfile = useCallback(async (name: string, role: Role, workplace: string, pin: string, aplWeeks?: number, email?: string, password?: string) => {
+  const handleCreateProfile = useCallback(async (name: string, role: Role, workplace: string, workplaceId: string, pin: string, aplWeeks?: number, email?: string, password?: string) => {
       // NOTE: This function is passed to ProfileSelection. 
       // It handles the business logic of creating a profile structure/settings before calling register.
       
@@ -709,7 +709,7 @@ const App: React.FC = () => {
 
           // Use secure registration. onAuthStateChanged will pick up the new user automatically.
           if (email && password) {
-             newUser = await storage.registerUser(name, email, password, role, workplace, undefined, aplWeeks);
+             newUser = await storage.registerUser(name, email, password, role, workplace, undefined, aplWeeks, workplaceId);
           } else {
              // Fallback for dev mode without password
              newUser = await storage.createUser(name, role, workplace, pin, aplWeeks);
