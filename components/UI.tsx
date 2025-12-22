@@ -368,7 +368,7 @@ export const CareFlowNavigator: React.FC<{ user: User, onSourceClick?: (title: s
         setIsLoading(true);
         setError(null);
         try {
-            const steps = await generateCareFlow(query, user.role);
+            const steps = await generateCareFlow(query, user.role, user.workplace);
             if (steps && steps.length > 0) {
                 setFlow(steps);
             } else {
@@ -630,6 +630,29 @@ export const Sidebar: React.FC<{
         <div className="ml-3">
             <p className="font-bold text-slate-800 dark:text-slate-100">{user.name}</p>
             <p className="text-sm text-slate-500 dark:text-slate-400">{getRoleDisplayName(user.role)}</p>
+            {/* Konto-actions: flyttade hit för mobilåtkomst */}
+            <div className="mt-2 flex items-center gap-2">
+                <button
+                    onClick={() => setView('settings')}
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors border btn-press ${
+                        currentView === 'settings'
+                            ? 'bg-indigo-600 text-white border-indigo-500'
+                            : 'bg-white/60 dark:bg-slate-900/30 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    }`}
+                    aria-label="Öppna inställningar"
+                >
+                    <span className="w-4 h-4">{ICONS.settings}</span>
+                    Inställningar
+                </button>
+                <button
+                    onClick={onLogout}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 btn-press"
+                    aria-label="Logga ut"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 l3-3m0 0-3-3m3 3H9" /></svg>
+                    Logga ut
+                </button>
+            </div>
         </div>
       </div>
       
@@ -658,21 +681,6 @@ export const Sidebar: React.FC<{
             onClick={() => setView(item.view)}
           />
         ))}
-        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700/50 space-y-1">
-            <NavItem 
-                icon={ICONS.settings} 
-                label="Inställningar" 
-                isActive={currentView === 'settings'} 
-                onClick={() => setView('settings')}
-            />
-            <button
-              onClick={onLogout}
-              className="w-full flex items-center px-4 py-3 text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-200 text-sm font-medium rounded-md btn-press"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 mr-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 l3-3m0 0-3-3m3 3H9" /></svg>
-              <span>Logga ut</span>
-            </button>
-        </div>
       </div>
       <style>{`
         @keyframes fade-in-down {

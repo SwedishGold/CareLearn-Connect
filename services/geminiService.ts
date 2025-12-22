@@ -100,6 +100,74 @@ const getAI = (forceSystemKey: boolean = false) => {
     return new GoogleGenAI({ apiKey: finalKey || "MISSING_KEY" });
 };
 
+// --- GEMINI MODEL ROUTING (PRIMARY + FALLBACK) ---
+// Primär: Gemini 3.0 Flash. Fallback: nuvarande modell som appen använder idag.
+const PRIMARY_TEXT_MODEL = 'gemini-3.0-flash' as const;
+const FALLBACK_TEXT_MODEL = 'gemini-2.5-flash' as const;
+
+type GenerateContentParams = Parameters<GoogleGenAI['models']['generateContent']>[0];
+type GenerateContentResponse = Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>;
+type GenerateContentStreamParams = Parameters<GoogleGenAI['models']['generateContentStream']>[0];
+type GenerateContentStreamResponse = Awaited<ReturnType<GoogleGenAI['models']['generateContentStream']>>;
+
+const shouldFallbackToLegacyModel = (error: unknown): boolean => {
+    // Vi faller tillbaka brett eftersom "model not found", quota, 4xx/5xx kan dyka upp olika beroende på SDK/version.
+    // Viktigt: om primär modellen inte är tillgänglig i ett projekt, vill vi alltid kunna fortsätta på nuvarande modell.
+    if (!error) return true;
+    if (typeof error === 'string') return true;
+    if (error instanceof Error) return true;
+    return true;
+};
+
+const generateTextWithFallback = async (
+    ai: GoogleGenAI,
+    request: Omit<GenerateContentParams, 'model'>,
+    meta?: { feature?: string }
+): Promise<GenerateContentResponse> => {
+    try {
+        return await ai.models.generateContent({ ...request, model: PRIMARY_TEXT_MODEL } as GenerateContentParams);
+    } catch (error) {
+        if (!shouldFallbackToLegacyModel(error)) throw error;
+        console.warn(`[Gemini] Primär modell misslyckades (${PRIMARY_TEXT_MODEL})${meta?.feature ? ` för ${meta.feature}` : ''}. Faller tillbaka till ${FALLBACK_TEXT_MODEL}.`, error);
+        return await ai.models.generateContent({ ...request, model: FALLBACK_TEXT_MODEL } as GenerateContentParams);
+    }
+};
+
+const generateTextStreamWithFallback = async (
+    ai: GoogleGenAI,
+    request: Omit<GenerateContentStreamParams, 'model'>,
+    meta?: { feature?: string }
+): Promise<GenerateContentStreamResponse> => {
+    try {
+        return await ai.models.generateContentStream({ ...request, model: PRIMARY_TEXT_MODEL } as GenerateContentStreamParams);
+    } catch (error) {
+        if (!shouldFallbackToLegacyModel(error)) throw error;
+        console.warn(`[Gemini] Primär stream-modell misslyckades (${PRIMARY_TEXT_MODEL})${meta?.feature ? ` för ${meta.feature}` : ''}. Faller tillbaka till ${FALLBACK_TEXT_MODEL}.`, error);
+        return await ai.models.generateContentStream({ ...request, model: FALLBACK_TEXT_MODEL } as GenerateContentStreamParams);
+    }
+};
+
+// --- CORE CONTEXT (ROLE + WORKPLACE + TOOL) ---
+const buildToolContextBlock = (params: {
+    toolName: string;
+    user?: Pick<User, 'name' | 'role' | 'workplace'>;
+    role?: Role;
+    workplaceName?: string;
+}): string => {
+    const role = params.user?.role || params.role || 'okänd';
+    const workplace = (params.user?.workplace || params.workplaceName || '').trim() || 'okänd';
+    const name = (params.user?.name || '').trim();
+
+    // Kort och stabilt – detta ska hjälpa modellen att svara rätt utan att “spilla” in i output-format (t.ex. JSON).
+    return `
+KONTEXT (CareLearn Connect):
+- VERKTYG: ${params.toolName}
+- ANVÄNDARE: ${name || 'okänd'}
+- ROLL: ${role}
+- ARBETSPLATS/AVDELNING: ${workplace}
+`.trim();
+};
+
 // --- PII SCANNER FOR UPLOADS ---
 export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; reason?: string }> => {
     const safeText = text || '';
@@ -112,8 +180,7 @@ export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; r
     // 2. AI-based Check (Smarter)
     const ai = getAI();
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Analysera följande text utdrag för känsliga personuppgifter (PII) som bryter mot GDPR/Patientsekretess.
                 Leta efter: Namn på patienter, Adresser, Telefonnummer, Personnummer, Detaljerade sjukdomsberättelser kopplade till individ.
@@ -123,7 +190,7 @@ export const scanTextForPII = async (text: string): Promise<{ hasPII: boolean; r
                 Svara ENDAST med JSON: { "safe": boolean, "reason": string | null }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'PII-scan' });
         
         const result = parseAIJSON<{ safe: boolean, reason: string | null }>(response.text || '{}');
         if (!result.safe) {
@@ -147,14 +214,21 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
         ? 'Sjuksköterskeprogrammet (Mittuniversitetet/Högskolor)' 
         : 'Vård- och omsorgscollege Västernorrland (Komvux)';
 
+    const validateWorkplaceAnchoring = (structure: any, wp: string) => {
+        const needle = (wp || '').trim().toLowerCase();
+        const desc = (structure?.workplaceDescription || '').toLowerCase();
+        return !needle || desc.includes(needle);
+    };
+
     const basePrompt = `
         Du är en expertpedagog och vårdutvecklare i Region Västernorrland.
         
         UPPGIFT:
         Skapa en utbildningsprofil för en ${roleDisplay} på: "${workplaceName}".
+        VIKTIGT: Du får INTE byta arbetsplats. Om namnet är tvetydigt ska du INTE anta en annan ort/enhet. Utgå alltid från exakt angiven arbetsplats.
 
         GENERERA JSON (Strict format):
-        - "workplaceDescription": En detaljerad kontextbeskrivning om enheten (används av Chatbot).
+        - "workplaceDescription": En detaljerad kontextbeskrivning om enheten (används av Chatbot). KRAV: måste innehålla exakt arbetsplatssträng "${workplaceName}".
         - "checklist": 15 konkreta introduktionspunkter (Minst 5 unika för enheten, t.ex. specifik utrustning).
         - "goals": 6 konkreta lärandemål kopplade till kursplanen.
         - "specialty": (psykiatri, aldreomsorg, akutsjukvard, lss, primarvard, annat).
@@ -167,8 +241,7 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
     // Attempt 1: With Google Search (Deep Research)
     try {
         console.log("Generating structure (Attempt 1 - Deep Research Mode)...");
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', 
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 INSTRUKTION FÖR FORSKNING (STEG 1):
                 Använd Google Sök för att hitta så mycket specifik information som möjligt om "${workplaceName}".
@@ -176,6 +249,7 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
                 1. Vilka patientgrupper vårdas där?
                 2. Vilka specifika diagnoser eller vårdbehov är vanliga?
                 3. Finns det offentliga riktlinjer, verksamhetsberättelser eller nyheter om enheten?
+                VIKTIGT: Du får INTE byta arbetsplats. Om du inte kan bekräfta att en träff gäller exakt "${workplaceName}", skriv mer generiskt men behåll arbetsplatsnamnet.
                 
                 INSTRUKTION FÖR SKAPANDE (STEG 2):
                 Använd informationen du hittade ovan för att skapa en MYCKET specifik och anpassad profil.
@@ -185,20 +259,35 @@ export const generateAppStructure = async (workplaceName: string, role: Role): P
                 ${basePrompt}
             `,
             config: { tools: [{ googleSearch: {} }] } // Only tools allowed, no responseMimeType
-        });
+        }, { feature: 'generateAppStructure (deep research)' });
 
-        return parseAIJSON(response.text || '{}');
+        const parsed = parseAIJSON<any>(response.text || '{}');
+        if (!validateWorkplaceAnchoring(parsed, workplaceName)) {
+            throw new Error(`App structure is not anchored to selected workplace "${workplaceName}".`);
+        }
+        return parsed;
     } catch (error) {
         console.warn("Structure Generation Attempt 1 failed (Deep Research). Retrying without tools...", error);
         
         // Attempt 2: Without Tools (Internal Knowledge - Safer JSON)
         try {
-            const responseRetry = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+            const responseRetry = await generateTextWithFallback(ai, {
                 contents: basePrompt,
                 config: { responseMimeType: "application/json" }
-            });
-            return parseAIJSON(responseRetry.text || '{}');
+            }, { feature: 'generateAppStructure (no tools)' });
+            const parsed = parseAIJSON<any>(responseRetry.text || '{}');
+            if (!validateWorkplaceAnchoring(parsed, workplaceName)) {
+                console.warn("Structure not anchored to workplace; returning conservative fallback.");
+                return {
+                    workplaceDescription: `Arbetsplats: ${workplaceName}. (Beta) Kontext saknar verifierad enhetsprofil – svar hålls generiska tills lokala rutiner/PM finns i kunskapsbanken.`,
+                    checklist: APP_DATA.checklist.slice(0, 15),
+                    goals: APP_DATA.knowledgeRequirements.map(k => k.text).slice(0, 6),
+                    specialty: 'annat',
+                    welcomeMessage: `Välkommen till ${workplaceName}!`,
+                    resources: []
+                };
+            }
+            return parsed;
         } catch (retryError) {
             console.error("Structure Generation Attempt 2 failed:", retryError);
             throw retryError;
@@ -215,8 +304,7 @@ export const generateQuizTier = async (workplaceName: string, role: Role, specia
     const count = 30;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Skapa ett kunskapstest för en ${roleDisplay} på "${workplaceName}" (${specialty}).
                 
@@ -242,7 +330,7 @@ export const generateQuizTier = async (workplaceName: string, role: Role, specia
                 Returnera ENDAST JSON. Ingen annan text.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: `generateQuizTier (${tier})` });
 
         const questions = parseAIJSON<KnowledgeTestQuestion[]>(response.text || '[]');
         
@@ -292,7 +380,7 @@ const getProgressionContext = (userData: UserData): string => {
 
 // --- NEW: SMART CONTEXT SELECTOR (OPTIMIZATION) ---
 const selectRelevantDocuments = (docs: CustomDocument[], query: string): CustomDocument[] => {
-    // Gemini 2.5 Flash has a massive context window (1M tokens).
+    // Gemini Flash-modellerna har stor kontext. Vi är generösa för att säkra att uppladdade filer "får plats".
     // To ensure the AI reads user uploaded files, we can be very generous.
     // We prioritize by relevance score but fallback to include everything up to a safe limit.
     
@@ -375,11 +463,23 @@ ${(d.content || '').substring(0, 20000)}
     `;
 
     let systemInstruction = "";
+    const toolContext = buildToolContextBlock({
+        toolName: isRolePlaying ? 'Chatbot (Rollspel/Scenario)' : 'Chatbot (AI-handledare)',
+        user,
+        workplaceName
+    });
 
     if (isRolePlaying) {
-        systemInstruction = `Du spelar en roll i ett vårdscenario som utspelar sig på ${workplaceName}. Agera trovärdigt enligt scenariot. ${securityProtocol}`;
+        systemInstruction = `
+${toolContext}
+
+Du spelar en roll i ett vårdscenario som utspelar sig på ${workplaceName}. Agera trovärdigt enligt scenariot.
+${securityProtocol}
+        `.trim();
     } else {
         systemInstruction = `
+            ${toolContext}
+
             Du är en pedagogisk, metakognitiv AI-Handledare för ${user.name} (${getRoleDisplayName(user.role)}) på ${workplaceName}.
             ROLL-INSTRUKTION: ${getRoleSpecificInstruction(user.role)}
             
@@ -411,14 +511,13 @@ ${(d.content || '').substring(0, 20000)}
         `;
     }
 
-    const stream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash',
+    const stream = await generateTextStreamWithFallback(ai, {
         contents: history.map(m => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
         config: {
             tools: [{ googleSearch: {} }],
             systemInstruction: systemInstruction
         }
-    });
+    }, { feature: 'chat stream' });
     for await (const chunk of stream) {
         yield chunk.text || '';
     }
@@ -454,8 +553,7 @@ export const getAIDashboardSuggestion = async (user: User, userData: UserData): 
     const lastLog = userData.logbookEntries.length > 0 ? userData.logbookEntries[userData.logbookEntries.length - 1].text : "Inga inlägg än.";
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en strategisk och peppande handledare för ${user.name} (${getRoleDisplayName(user.role)}).
                 Din uppgift är att planera dagens uppdrag.
@@ -481,7 +579,7 @@ export const getAIDashboardSuggestion = async (user: User, userData: UserData): 
                 }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'dashboard suggestion' });
 
         const result = parseAIJSON<DailySuggestion>(response.text || '{}');
         
@@ -502,19 +600,20 @@ export const getAIDashboardSuggestion = async (user: User, userData: UserData): 
 };
 
 // --- NEW: Generate Care Flow Guide ---
-export const generateCareFlow = async (query: string, role: Role): Promise<CareFlowStep[]> => {
+export const generateCareFlow = async (query: string, role: Role, workplaceName?: string): Promise<CareFlowStep[]> => {
     const ai = getAI();
     const roleDisplay = getRoleDisplayName(role);
     
     // FETCH RELEVANT DOCS to ensure navigator is aware of uploaded files
-    const allDocs = await storage.getCustomDocuments();
+    const allDocs = await storage.getCustomDocuments(workplaceName, role);
     const relevantDocs = selectRelevantDocuments(allDocs, query);
     const docsContext = relevantDocs.map(d => `[DOKUMENT: ${d.title}]\n${d.content.substring(0, 5000)}`).join('\n\n');
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
+                ${buildToolContextBlock({ toolName: 'Vårdflödes-navigator (CareFlow)', role, workplaceName })}
+
                 Du är en expert på vårdprocesser och kliniska riktlinjer.
                 UPPGIFT: Skapa en visuell steg-för-steg vårdflödesguide för: "${query}".
                 MÅLGRUPP: ${roleDisplay} (Anpassa språknivå och detaljrikedom).
@@ -541,7 +640,7 @@ export const generateCareFlow = async (query: string, role: Role): Promise<CareF
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'generateCareFlow' });
 
         return parseAIJSON<CareFlowStep[]>(response.text || '[]');
     } catch (error) {
@@ -556,8 +655,7 @@ export const generateCareFlowFromContext = async (docContent: string, docTitle: 
     const roleDisplay = getRoleDisplayName(role);
     
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expert på att omvandla tunga vårdtexter till pedagogiska flödesscheman.
                 
@@ -585,7 +683,7 @@ export const generateCareFlowFromContext = async (docContent: string, docTitle: 
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'generateCareFlowFromContext' });
 
         return parseAIJSON<CareFlowStep[]>(response.text || '[]');
     } catch (error) {
@@ -615,8 +713,7 @@ export const generateDailyChallenge = async (role: Role, userData: UserData): Pr
     const lastLogbookEntry = userData.logbookEntries.slice(-1)[0]?.text || "Ingen inlägg än.";
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expert mentor för en ${roleDisplay} på ${workplace}.
                 Skapa dagens kliniska utmaning anpassad efter användarens faktiska behov.
@@ -648,7 +745,7 @@ export const generateDailyChallenge = async (role: Role, userData: UserData): Pr
                 }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'daily challenge' });
 
         return parseAIJSON<DailyChallenge>(response.text || '{}');
     } catch (error) {
@@ -683,8 +780,7 @@ export const getAIFeedbackAnalysis = async (feedback: FeedbackEntry[]): Promise<
     ).join('\n');
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en strategisk produktanalytiker. Analysera följande feedback-data från användare av vårdplattformen CareLearn.
                 
@@ -708,7 +804,7 @@ export const getAIFeedbackAnalysis = async (feedback: FeedbackEntry[]): Promise<
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'feedback analysis' });
 
         return parseAIJSON<FeedbackAnalysis>(response.text || '{}');
     } catch (error) {
@@ -756,8 +852,7 @@ export const generateQuizFromDocument = async (content: string): Promise<Knowled
     const ai = getAI();
     try {
         const safeContent = content.substring(0, 100000); // Token limit safeguard
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en expertpedagog inom vård och omsorg.
                 Din uppgift är att skapa ett kunskapstest baserat EXKLUSIVT på texten nedan.
@@ -784,7 +879,7 @@ export const generateQuizFromDocument = async (content: string): Promise<Knowled
                 Returnera ENDAST JSON.
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'quiz from document' });
 
         const questions = parseAIJSON<KnowledgeTestQuestion[]>(response.text || '[]');
         return questions.map((q, i) => ({ ...q, originalIndex: i + 1, verified: false }));
@@ -804,8 +899,7 @@ export const moderateContent = async (text: string): Promise<{ allowed: boolean;
             return { allowed: false, reason: "Innehåller personuppgifter/patientdata." };
         }
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är moderator och pedagogisk AI-Handledare för "CareLearn Connect", ett socialt nätverk för vårdpersonal och studenter.
                 
@@ -832,7 +926,7 @@ export const moderateContent = async (text: string): Promise<{ allowed: boolean;
                 }
             `,
             config: { responseMimeType: "application/json" }
-        });
+        }, { feature: 'moderation' });
 
         return parseAIJSON(response.text || '{}');
     } catch (error) {
@@ -846,8 +940,7 @@ export const moderateContent = async (text: string): Promise<{ allowed: boolean;
 export const summarizeDocumentContent = async (content: string): Promise<string> => {
     const ai = getAI();
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Du är en pedagogisk assistent för vårdpersonal.
                 Sammanfatta följande dokumentinnehåll på ett tydligt och strukturerat sätt.
@@ -857,7 +950,7 @@ export const summarizeDocumentContent = async (content: string): Promise<string>
                 DOKUMENTINNEHÅLL:
                 "${content.substring(0, 50000)}"
             `,
-        });
+        }, { feature: 'summarize document' });
         return response.text || "Kunde inte generera sammanfattning.";
     } catch (e) {
         console.error("Summary failed:", e);
@@ -913,13 +1006,12 @@ export const getSupervisorChatResponseStream = async function* (user: User, hist
         `;
     }
 
-    const stream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash',
+    const stream = await generateTextStreamWithFallback(ai, {
         contents: history.map(m => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
         config: {
             systemInstruction: systemInstruction
         }
-    });
+    }, { feature: 'supervisor chat stream' });
 
     for await (const chunk of stream) {
         yield chunk.text || '';
@@ -958,8 +1050,7 @@ export const getSupervisorDashboardInsights = async (studentData: any[]): Promis
 
     const ai = getAI(true); // Force system key
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Analysera följande studentdata för en handledare.
                 DATA: ${JSON.stringify(summary)}
@@ -973,7 +1064,7 @@ export const getSupervisorDashboardInsights = async (studentData: any[]): Promis
                 
                 Använd inte JSON, svara med vanlig text/markdown.
             `
-        });
+        }, { feature: 'supervisor dashboard insights' });
         return response.text || "Kunde inte generera insikter.";
     } catch (e) {
         console.error("Supervisor Insights Failed:", e);
@@ -989,8 +1080,7 @@ export const getAIMetacognitivePrompt = async (goalText: string, reflection: str
 export const getAIFeedbackOnTranscript = async (transcript: any[], scenario: any) => {
     const ai = getAI(true);
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Analysera transkriptet från en kommunikationsövning mellan en vårdstudent och en simulerad patient.
                 SCENARIO: ${scenario.title} - ${scenario.mission}
@@ -1003,7 +1093,7 @@ export const getAIFeedbackOnTranscript = async (transcript: any[], scenario: any
                 
                 Svara med uppmuntrande och konstruktiv ton.
             `
-        });
+        }, { feature: 'feedback on transcript' });
         return response.text || "Ingen feedback kunde genereras.";
     } catch(e) {
         return "Kunde inte ansluta till AI för feedback.";
@@ -1020,8 +1110,7 @@ export const getAIAssistedWeeklyReport = async (student: User, data: UserData): 
     const goalsRated = Object.values(data.goalsProgress || {}).filter((g: any) => g.rating > 0).length;
     
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en erfaren pedagogisk handledare. Skapa ett underlag för ett handledningssamtal med studenten ${student.name} (${student.role}).
                 
@@ -1038,7 +1127,7 @@ export const getAIAssistedWeeklyReport = async (student: User, data: UserData): 
                 
                 Håll tonen professionell, stöttande och objektiv.
             `
-        });
+        }, { feature: 'weekly report' });
         return response.text || "Kunde inte generera rapport.";
     } catch (e) {
         console.error("Report generation failed", e);
@@ -1061,8 +1150,7 @@ export const getAITeachingTips = async (): Promise<string> => {
 export const getAIConstructiveFeedbackTips = async (): Promise<string> => {
     const ai = getAI(true);
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som en erfaren pedagogisk handledare inom vården.
                 Ge 5 konkreta och handfasta tips på hur man ger konstruktiv feedback till en student (USK/SSK).
@@ -1077,7 +1165,7 @@ export const getAIConstructiveFeedbackTips = async (): Promise<string> => {
                 
                 Använd Markdown för formatering med rubriker och punktlistor.
             `
-        });
+        }, { feature: 'constructive feedback tips' });
         return response.text || "Inga tips kunde genereras.";
     } catch (error) {
         console.error("Feedback Tips Error:", error);
@@ -1088,8 +1176,7 @@ export const getAIConstructiveFeedbackTips = async (): Promise<string> => {
 export const getAIDifficultConversationTips = async (): Promise<string> => {
     const ai = getAI(true);
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 Agera som expert på kommunikation och ledarskap inom vården.
                 Ge en steg-för-steg guide för hur en handledare genomför ett "svårt samtal" med en student som riskerar att bli underkänd, har brister i bemötandet eller attitydproblem.
@@ -1102,7 +1189,7 @@ export const getAIDifficultConversationTips = async (): Promise<string> => {
                 
                 Använd Markdown för formatering med rubriker och punktlistor.
             `
-        });
+        }, { feature: 'difficult conversation tips' });
         return response.text || "Inga tips kunde genereras.";
     } catch (error) {
         console.error("Difficult Conversation Tips Error:", error);
@@ -1113,13 +1200,22 @@ export const getAIDifficultConversationTips = async (): Promise<string> => {
 // --- NEW: Generate User Profile (Registration) ---
 export const generateUserProfile = async (name: string, role: Role, workplace: string): Promise<AIGeneratedProfile> => {
     const ai = getAI(true); // Use system key
+    const validateWorkplaceAnchoring = (profile: AIGeneratedProfile, workplaceName: string) => {
+        const wp = (workplaceName || '').trim();
+        const bio = (profile?.bio || '').toLowerCase();
+        const welcome = (profile?.welcomeMessage || '').toLowerCase();
+        const needle = wp.toLowerCase();
+        // Krav: modellen får inte "byta" arbetsplats. Den måste minst referera till exakt sträng någonstans.
+        if (needle && (bio.includes(needle) || welcome.includes(needle))) return true;
+        return false;
+    };
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+        const response = await generateTextWithFallback(ai, {
             contents: `
                 INSTRUKTION FÖR FORSKNING (STEG 1):
                 Använd Google Sök för att hitta specifik information om "${workplace}".
                 Leta efter vilken typ av vård som bedrivs, patientgrupper och om det finns någon specifik profil.
+                VIKTIGT: Du får INTE byta arbetsplats. Om du hittar flera träffar med liknande namn ska du inte "välja en annan". Om du är osäker: skriv generiskt men behåll exakt arbetsplatsnamn.
                 
                 INSTRUKTION FÖR SKAPANDE (STEG 2):
                 Baserat på din research och den angivna rollen, generera en professionell och personlig profil för en ny användare i utbildningsplattformen CareLearn.
@@ -1127,41 +1223,53 @@ export const generateUserProfile = async (name: string, role: Role, workplace: s
                 ANVÄNDARE:
                 Namn: ${name}
                 Roll: ${getRoleDisplayName(role)}
-                Arbetsplats: ${workplace}
+                Arbetsplats (EXAKT STRÄNG, får ej ändras): ${workplace}
                 
                 GENERERA JSON:
                 {
-                    "bio": "En kort, välkomnande biografi på svenska som nämner den specifika avdelningens inriktning (max 3 meningar).",
+                    "bio": "En kort, välkomnande biografi på svenska (max 3 meningar). KRAV: måste innehålla exakt arbetsplatssträng: '${workplace}'.",
                     "strengths": ["Styrka 1", "Styrka 2", "Styrka 3"] (Kopplat till rollen och arbetsplatsen),
                     "learningTips": "Ett konkret studietips som är relevant för just denna typ av vård.",
-                    "welcomeMessage": "Ett peppande välkomstmeddelande anpassat till enheten."
+                    "welcomeMessage": "Ett peppande välkomstmeddelande anpassat till enheten. KRAV: måste innehålla exakt arbetsplatssträng: '${workplace}'."
                 }
             `,
             config: { 
                 tools: [{ googleSearch: {} }] // Only tools allowed, no responseMimeType
             }
-        });
+        }, { feature: 'generate user profile (with search)' });
         
-        return parseAIJSON<AIGeneratedProfile>(response.text || '{}');
+        const parsed = parseAIJSON<AIGeneratedProfile>(response.text || '{}');
+        if (!validateWorkplaceAnchoring(parsed, workplace)) {
+            throw new Error(`AI-profile is not anchored to selected workplace "${workplace}".`);
+        }
+        return parsed;
     } catch (e) {
         console.error("Profile gen failed, attempting fallback...", e);
         // Fallback profile if search fails, try without tools
         try {
-             const responseRetry = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+             const responseRetry = await generateTextWithFallback(ai, {
                 contents: `
-                    Generera en professionell profil för ${name} (${role}) på ${workplace}.
-                    JSON format: { "bio": "...", "strengths": [], "learningTips": "...", "welcomeMessage": "..." }
+                    Du är en professionell, pedagogisk assistent. Du får INTE byta arbetsplats.
+                    Arbetsplats (EXAKT STRÄNG): ${workplace}
+                    Roll: ${getRoleDisplayName(role)}
+                    Namn: ${name}
+
+                    Returnera ENDAST JSON i detta format:
+                    { "bio": "MÅSTE innehålla exakt '${workplace}'", "strengths": [], "learningTips": "...", "welcomeMessage": "MÅSTE innehålla exakt '${workplace}'" }
                 `,
                 config: { responseMimeType: "application/json" }
-            });
-            return parseAIJSON<AIGeneratedProfile>(responseRetry.text || '{}');
+            }, { feature: 'generate user profile (no tools)' });
+            const parsed = parseAIJSON<AIGeneratedProfile>(responseRetry.text || '{}');
+            if (!validateWorkplaceAnchoring(parsed, workplace)) {
+                throw new Error(`AI-profile fallback is not anchored to selected workplace "${workplace}".`);
+            }
+            return parsed;
         } catch (retryError) {
              return {
-                bio: `Välkommen till CareLearn!`,
+                bio: `Välkommen till CareLearn! Arbetsplats: ${workplace}.`,
                 strengths: ["Engagemang", "Nyfikenhet", "Samarbetsvilja"],
                 learningTips: "Ta vara på varje tillfälle att lära i praktiken.",
-                welcomeMessage: "Välkommen!"
+                welcomeMessage: `Välkommen till ${workplace}!`
             };
         }
     }

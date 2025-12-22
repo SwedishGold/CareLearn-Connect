@@ -1,6 +1,6 @@
 
-import { User, UserData, Role, LogbookEntry, DepartmentSettings, CustomDocument, Notification, Post, Credential, ScheduleEntry, PastPlacement, UnansweredQuestion, FlaggedContentEntry, FeedbackEntry, Workplace } from '../types';
-import { APP_DATA } from '../constants';
+import { User, UserData, Role, LogbookEntry, DepartmentSettings, CustomDocument, Notification, Post, Credential, ScheduleEntry, PastPlacement, UnansweredQuestion, FlaggedContentEntry, FeedbackEntry, Workplace, RegistrationConfig } from '../types';
+import { APP_DATA, VASTERNORRLAND_UNITS } from '../constants';
 import { DEMO_USER_DATA } from '../constants/demoData';
 import { generateUserProfile } from '../services/geminiService';
 
@@ -82,12 +82,249 @@ export const getDefaultUserData = (role: Role, aplWeeks: number = 4): UserData =
     };
 };
 
+// --- REGISTRATION POLICY (BETA) ---
+const REGISTRATION_SETTINGS_DOC_ID = 'registration';
+
+const normalizeWorkplace = (workplace: string): string => (workplace || '').trim();
+
+const slugify = (value: string): string =>
+    (value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^\p{L}\p{N}]+/gu, '-') // keep letters/numbers (unicode)
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+
+const getWorkplaceDocIdForName = (name: string): string => `wp-${slugify(name) || 'unknown'}`;
+
+const ensureWorkplaceExists = async (name: string): Promise<{ id: string; name: string }> => {
+    const normalized = normalizeWorkplace(name);
+    const id = getWorkplaceDocIdForName(normalized);
+    const ref = db.collection('workplaces').doc(id);
+    const snap = await ref.get();
+    if (snap.exists) {
+        const data = snap.data();
+        return { id, name: (data?.name as string) || normalized };
+    }
+
+    const unit = (VASTERNORRLAND_UNITS || []).find(u => (u.name || '').trim().toLowerCase() === normalized.toLowerCase());
+    const city =
+        normalized.toLowerCase().includes('sundsvall') ? 'Sundsvall' :
+        normalized.toLowerCase().includes('örnsköldsvik') ? 'Örnsköldsvik' :
+        normalized.toLowerCase().includes('sollefteå') ? 'Sollefteå' :
+        'Okänd';
+
+    const workplace: Workplace = {
+        id,
+        name: normalized,
+        city,
+        specialty: (unit?.specialty || 'annat') as any,
+        description: `Beta-seedad arbetsplats: ${normalized}`,
+        checklist: APP_DATA.checklist.join('\n'),
+        knowledgeRequirements: APP_DATA.knowledgeRequirements.map(k => k.text).join('\n'),
+        knowledgeTestQuestionsUsk: JSON.stringify(APP_DATA.knowledgeTestQuestions.usk),
+        knowledgeTestQuestionsSsk: JSON.stringify(APP_DATA.knowledgeTestQuestions.ssk),
+        memberCount: 0,
+        createdByType: 'AI',
+        searchKey: normalized.toLowerCase()
+    };
+
+    await ref.set(workplace);
+    return { id, name: normalized };
+};
+
+// Exported wrapper used by Developer tooling to unlock workplaces deterministically.
+export const ensureWorkplaceForRegistration = async (name: string): Promise<{ id: string; name: string }> => {
+    return await ensureWorkplaceExists(name);
+};
+
+export const getRegistrationConfig = async (): Promise<RegistrationConfig> => {
+    const ref = db.collection('settings').doc(REGISTRATION_SETTINGS_DOC_ID);
+    const snap = await ref.get();
+    if (snap.exists) {
+        const raw = snap.data() as any;
+
+        // Migration: older versions stored allowedWorkplaces as string[]
+        const rawAllowed = raw.allowedWorkplaces;
+        const migratedNames: string[] = Array.isArray(rawAllowed)
+            ? rawAllowed.map((w: any) => {
+                const trimmed = String(w?.name ?? w ?? '').trim();
+                if (trimmed === 'Avdelning 51' || trimmed === 'Avd 51') return 'Avdelning 51 PIVA Sundsvall';
+                if (trimmed === 'Avdelning 7' || trimmed === 'Avd 7') return 'Avdelning 7 Sundsvall';
+                return trimmed;
+            }).filter(Boolean)
+            : [];
+
+        // If already in object form, keep names but still ensure workplace docs exist
+        const existingObjects: { id: string; name: string }[] = Array.isArray(rawAllowed) && rawAllowed.length && typeof rawAllowed[0] === 'object'
+            ? rawAllowed.map((w: any) => ({ id: String(w.id || ''), name: String(w.name || '').trim() })).filter((w: any) => w.id && w.name)
+            : [];
+
+        const allowedFinal: { id: string; name: string }[] = existingObjects.length
+            ? await Promise.all(existingObjects.map(async (w) => {
+                // Ensure doc exists and name is current
+                const ensured = await ensureWorkplaceExists(w.name);
+                return { id: w.id || ensured.id, name: ensured.name };
+            }))
+            : await Promise.all(migratedNames.map(async (n) => ensureWorkplaceExists(n)));
+
+        const next: RegistrationConfig = {
+            allowedWorkplaces: allowedFinal,
+            blockedSignupRoles: Array.isArray(raw.blockedSignupRoles) ? raw.blockedSignupRoles : ['admin', 'huvudhandledare', 'developer'],
+            betaInfoText: String(raw.betaInfoText || 'CareLearn Connect är i beta.'),
+            developerContactEmail: String(raw.developerContactEmail || 'Andreas.guldberg@gmail.com'),
+            developerLinkedInUrl: String(raw.developerLinkedInUrl || 'https://www.linkedin.com/in/andreas-hillborgh-51581371?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app'),
+        };
+
+        await ref.set(next);
+        return next;
+    }
+
+    const defaultWorkplaces = await Promise.all([
+        ensureWorkplaceExists('Avdelning 51 PIVA Sundsvall'),
+        ensureWorkplaceExists('Avdelning 7 Sundsvall')
+    ]);
+
+    const defaults: RegistrationConfig = {
+        // Use IDs to avoid ambiguity/bias from name-only matching
+        allowedWorkplaces: defaultWorkplaces,
+        blockedSignupRoles: ['admin', 'huvudhandledare', 'developer'],
+        betaInfoText:
+            'CareLearn Connect är i beta. Just nu är endast Avdelning 51 PIVA Sundsvall och Avdelning 7 Sundsvall öppna för egenregistrering. Fler avdelningar kommer när rutiner/PM finns uppladdade i kunskapsbanken.',
+        developerContactEmail: 'Andreas.guldberg@gmail.com',
+        developerLinkedInUrl: 'https://www.linkedin.com/in/andreas-hillborgh-51581371?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app'
+    };
+    await ref.set(defaults);
+    return defaults;
+};
+
+export const updateRegistrationConfig = async (config: RegistrationConfig): Promise<void> => {
+    const ref = db.collection('settings').doc(REGISTRATION_SETTINGS_DOC_ID);
+    await ref.set(config);
+};
+
+const formatRegistrationContact = (cfg: RegistrationConfig): string =>
+    `Kontakta: ${cfg.developerContactEmail} eller via LinkedIn: ${cfg.developerLinkedInUrl}`;
+
+const enforceRegistrationPolicy = async (args: {
+    config: RegistrationConfig;
+    role: Role;
+    workplaceId?: string;
+    workplaceName?: string;
+    allowPrivilegedProvisioning: boolean;
+}): Promise<void> => {
+    const role = args.role;
+    const workplaceId = (args.workplaceId || '').trim();
+    const workplace = normalizeWorkplace(args.workplaceName || '');
+    const cfg = args.config;
+
+    // Developer should not be self-registered via regular signup.
+    if (role === 'developer') {
+        throw new Error('Utvecklarkonto skapas via utvecklarflödet (Dev Access).');
+    }
+
+    // Block privileged roles from self-signup (admin/chef etc.)
+    if ((cfg.blockedSignupRoles || []).includes(role) && !args.allowPrivilegedProvisioning) {
+        throw new Error(`Denna roll kräver att kontot skapas av utvecklaren.\n\n${formatRegistrationContact(cfg)}`);
+    }
+
+    // Workplace must be one of the allowed beta workplaces (for self-signup).
+    const allowed = (cfg.allowedWorkplaces || []).filter(w => w?.id && w?.name);
+    const allowedIds = allowed.map(w => w.id);
+    const allowedNames = allowed.map(w => w.name);
+    if (!workplaceId || !allowedIds.includes(workplaceId)) {
+        throw new Error(`${cfg.betaInfoText}\n\nTillgängliga avdelningar just nu: ${allowedNames.join(', ') || 'inga'}.\n\n${formatRegistrationContact(cfg)}`);
+    }
+    const canonicalName = allowed.find(w => w.id === workplaceId)?.name;
+    if (canonicalName && workplace && canonicalName !== workplace) {
+        // Fail closed if some caller tries to mismatch ID/name.
+        throw new Error(`Vald avdelning matchar inte. Försök igen och välj avdelning på nytt.`);
+    }
+
+    // Enforce max 1 admin per workplace (policy across all workplaces).
+    if (role === 'admin') {
+        const existing = await db
+            .collection('users')
+            .where('role', '==', 'admin')
+            .where('workplaceId', '==', workplaceId)
+            .limit(1)
+            .get();
+        if (!existing.empty) {
+            throw new Error(`Det finns redan ett Admin/Chef-konto för ${workplace}. Kontakta utvecklaren för ändringar.`);
+        }
+    }
+};
+
+export const createPrivilegedAccount = async (args: {
+    name: string;
+    email: string;
+    temporaryPassword: string;
+    role: Role; // should be 'admin' (or other privileged roles if enabled later)
+    workplaceId: string;
+    workplaceName: string;
+}): Promise<User> => {
+    const cfg = await getRegistrationConfig();
+    await enforceRegistrationPolicy({
+        config: cfg,
+        role: args.role,
+        workplaceId: args.workplaceId,
+        workplaceName: args.workplaceName,
+        allowPrivilegedProvisioning: true,
+    });
+
+    // Bypass self-signup policy in registerUser since we already enforced above.
+    return await registerUser(
+        args.name,
+        args.email,
+        args.temporaryPassword,
+        args.role,
+        args.workplaceName,
+        undefined,
+        undefined,
+        args.workplaceId,
+        { bypassRegistrationPolicy: true }
+    );
+};
+
+// Convenience wrapper for developer UI
+export const createPrivilegedAdminForWorkplace = async (args: {
+    name: string;
+    email: string;
+    temporaryPassword: string;
+    workplaceId: string;
+    workplaceName: string;
+}): Promise<User> => {
+    return await createPrivilegedAccount({ ...args, role: 'admin' });
+};
+
 // --- AUTH SERVICE ---
 
-export const registerUser = async (name: string, email: string, password: string | undefined, role: Role, workplace: string, apiKey?: string, aplWeeks?: number, workplaceId?: string): Promise<User> => {
+export const registerUser = async (
+    name: string,
+    email: string,
+    password: string | undefined,
+    role: Role,
+    workplace: string,
+    apiKey?: string,
+    aplWeeks?: number,
+    workplaceId?: string,
+    options?: { bypassRegistrationPolicy?: boolean }
+): Promise<User> => {
     if (!password) throw new Error("Lösenord krävs för registrering.");
     
     try {
+        // 0. Enforce beta registration policy (unless explicitly bypassed by developer tooling)
+        if (!options?.bypassRegistrationPolicy && role !== 'developer') {
+            const registrationConfig = await getRegistrationConfig();
+            await enforceRegistrationPolicy({
+                config: registrationConfig,
+                role,
+                workplaceId,
+                workplaceName: workplace,
+                allowPrivilegedProvisioning: false,
+            });
+        }
+
         // 1. Create Auth User
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
@@ -166,6 +403,7 @@ export const authenticateWithGoogle = async (
     isRegistration: boolean,
     role?: Role,
     workplace?: string,
+    workplaceId?: string,
     aplWeeks?: number
 ): Promise<User> => {
     try {
@@ -198,6 +436,16 @@ export const authenticateWithGoogle = async (
                 throw new Error("Roll och arbetsplats måste väljas för att skapa ett konto.");
             }
 
+            // Enforce beta registration policy (Google self-signup)
+            const registrationConfig = await getRegistrationConfig();
+            await enforceRegistrationPolicy({
+                config: registrationConfig,
+                role,
+                workplaceId,
+                workplaceName: workplace,
+                allowPrivilegedProvisioning: false,
+            });
+
             // Create new profile
             console.log("Creating new Google user profile...");
             
@@ -215,6 +463,7 @@ export const authenticateWithGoogle = async (
                 email: email || "",
                 role,
                 workplace,
+                workplaceId: workplaceId || '',
                 googleId: uid, // Mark as google user
                 pin: '1234',
                 connections: [],
@@ -488,7 +737,8 @@ export const clearDepartmentSettings = async () => {
 export const applyCustomAppSettings = (): DepartmentSettings => {
     return {
         appName: 'CareLearn',
-        workplaceName: 'Avdelning 51',
+        // Default should be explicit to avoid ambiguity in AI/search contexts.
+        workplaceName: 'Avdelning 51 PIVA Sundsvall',
         specialty: 'psykiatri',
         checklist: APP_DATA.checklist.join('\n'),
         knowledgeRequirements: APP_DATA.knowledgeRequirements.map(k => k.text).join('\n'),
@@ -702,7 +952,9 @@ export const deletePost = async (postId: string) => {
 export const seedDemoStudentData = () => { /* No-op in Cloud mode */ };
 
 export const injectDemoData = async (): Promise<User> => {
-    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', 'Avd 51');
+    const cfg = await getRegistrationConfig();
+    const wp = cfg.allowedWorkplaces?.find(w => w.name.includes('Avdelning 51')) || cfg.allowedWorkplaces?.[0];
+    return await registerUser('Anna Andersson (Demo)', `demo-${Date.now()}@example.com`, '123456', 'usk-elev', wp?.name || 'Avdelning 51 PIVA Sundsvall', undefined, undefined, wp?.id);
 };
 
 export const exportAllData = async (): Promise<string> => {

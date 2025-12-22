@@ -499,7 +499,24 @@ const CommunicationLab: React.FC<CommunicationLabProps> = ({ user, userData, onU
 
             const bodyLanguageInstruction = 'I dina svar, väv in korta beskrivningar av ditt icke-verbala kroppsspråk inom parentes, t.ex. (undviker ögonkontakt), (suckar tungt), (tittar ut genom fönstret).';
 
-            const finalSystemInstruction = `${genderInstruction} ${intensityInstruction} ${bodyLanguageInstruction} Här är din roll: ${selectedScenario.systemInstruction}`;
+            const contextHeader = `
+KONTEXT (CareLearn Connect):
+- VERKTYG: Kommunikationslabbet (Live Audio)
+- ANVÄNDARE: ${user.name}
+- ROLL: ${user.role}
+- ARBETSPLATS/AVDELNING: ${(user.workplace || '').trim() || 'okänd'}
+
+SÄKERHET (GDPR/SEKRETESS):
+- Använd ALDRIG riktiga patientuppgifter. Om användaren råkar nämna sådant: avbryt och be om en generell fråga utan namn/id.
+- Om namn behövs i scenariot: använd bara fingerade namn.
+`.trim();
+
+            const finalSystemInstruction = `
+${contextHeader}
+
+${genderInstruction} ${intensityInstruction} ${bodyLanguageInstruction}
+Här är din roll: ${selectedScenario.systemInstruction}
+            `.trim();
             
             // Explicitly verify key exists (though environment should guarantee it)
             if (!process.env.API_KEY) {
