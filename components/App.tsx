@@ -514,7 +514,21 @@ const App: React.FC = () => {
                       const appUser = await storage.getUser(firebaseUser.uid);
                       if (appUser) {
                           const data = await storage.loadUserData(appUser.id);
-                          const settings = await storage.loadDepartmentSettings() || storage.applyCustomAppSettings();
+                          // IMPORTANT: workplaceId-first settings (prevents "fel avdelning" p.g.a. global settings/namn-bias)
+                          const settings =
+                              (appUser.workplaceId
+                                  ? await storage.loadWorkplaceSettings(appUser.workplaceId)
+                                  : null) ||
+                              (await storage.loadDepartmentSettings()) ||
+                              storage.applyCustomAppSettings();
+                          
+                          // Keep legacy global settings doc in sync for components that still read it directly.
+                          // This avoids cross-session "fel avdelning" without a full refactor.
+                          try {
+                              await storage.saveDepartmentSettings(settings);
+                          } catch (e) {
+                              console.warn("Could not sync legacy department settings", e);
+                          }
                           
                           setCurrentUser(appUser);
                           if (data) {
@@ -663,47 +677,23 @@ const App: React.FC = () => {
       setIsConfiguring(true);
       
       try {
-          let structure = { specialty: 'annat', checklist: [], goals: [], workplaceDescription: '', resources: [] };
-          
-          try {
-              // @ts-ignore
-              structure = await generateAppStructure(workplace, role);
-          } catch (err) {
-              console.error("Structure failed, using defaults", err);
-              structure.specialty = 'annat';
-              structure.checklist = APP_DATA.checklist;
-              structure.goals = APP_DATA.knowledgeRequirements.map(k => k.text);
-              structure.workplaceDescription = `Välkommen till din introduktion på ${workplace}.`;
-          }
+          // Deterministic config: derive from Workplace (workplaceId) instead of web/AI.
+          // This prevents bias/mismatch where AI "creates" the wrong department profile.
+          const workplaceSettings =
+              (workplaceId ? await storage.loadWorkplaceSettings(workplaceId) : null) ||
+              storage.applyCustomAppSettings();
 
-          const currentSettings = await storage.loadDepartmentSettings() || storage.applyCustomAppSettings();
-          
           const newSettings: DepartmentSettings = {
-              ...currentSettings,
+              ...workplaceSettings,
               workplaceName: workplace,
-              // @ts-ignore
-              specialty: structure.specialty,
-              checklist: (structure.checklist || []).join('\n'),
-              knowledgeRequirements: (structure.goals || []).join('\n'),
-              knowledgeTestQuestionsUsk: role.includes('usk') ? "" : currentSettings.knowledgeTestQuestionsUsk, 
-              knowledgeTestQuestionsSsk: role.includes('ssk') ? "" : currentSettings.knowledgeTestQuestionsSsk,
-              workplaceDescription: structure.workplaceDescription || ''
+              workplaceDescription: workplaceSettings.workplaceDescription || `Välkommen till din introduktion på ${workplace}.`
           };
-          
-          storage.saveDepartmentSettings(newSettings);
+
+          // Keep legacy settings doc updated for modules that still read it directly.
+          await storage.saveDepartmentSettings(newSettings);
           setDepartmentSettings(newSettings);
-          setOnboardingSettings(newSettings); 
-          
-          if (structure.resources && structure.resources.length > 0) {
-              structure.resources.forEach((res: any) => {
-                  storage.addCustomDocument({
-                      title: res.title,
-                      content: res.content,
-                      metadata: { type: res.type, responsibleUnit: 'AI Research', sourceUrl: 'Webben' },
-                      workplace: workplace
-                  });
-              });
-          }
+          setOnboardingSettings(newSettings);
+          setAppName(newSettings.appName);
 
           let newUser: User;
 
