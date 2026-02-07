@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareLearn Connect v3</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-dark: #0d1117;
+            --bg-mid: #161b22;
+            --bg-card: #21262d;
+            --bg-elevated: #30363d;
+            --accent: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.15);
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --border: #30363d;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            min-height: 100vh;
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .app { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, var(--accent), #1f6feb);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+        }
+
+        .logo-text h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .logo-text .version {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-dark);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #79c0ff;
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #3d444d;
+            border-color: #8b949e;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-icon {
+            padding: 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .btn-icon:hover { background: var(--bg-elevated); color: var(--text); }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Screens */
+        .screen { display: none; animation: fadeIn 0.3s ease; }
+        .screen.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Setup Screen */
+        .setup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .setup-option {
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .setup-option:hover {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .setup-option.selected {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+            box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.1);
+        }
+
+        .setup-option .icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .setup-option .title { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+        .setup-option .desc { font-size: 0.8rem; color: var(--text-muted); }
+
+        .setup-section {
+            margin-bottom: 32px;
+        }
+
+        .setup-section h3 {
+            font-size: 1rem;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .setup-section h3 .step {
+            background: var(--accent);
+            color: var(--bg-dark);
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* Patient State Panel */
+        .state-panel {
+            background: var(--bg-mid);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .state-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 16px;
+        }
+
+        .state-item {
+            position: relative;
+        }
+
+        .state-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .state-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .state-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .state-bar {
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .state-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease;
+        }
+
+        .state-fill.anxiety { background: linear-gradient(90deg, var(--warning), var(--danger)); }
+        .state-fill.agitation { background: linear-gradient(90deg, #f97316, #dc2626); }
+        .state-fill.trust { background: linear-gradient(90deg, #22d3ee, var(--accent)); }
+        .state-fill.cooperation { background: linear-gradient(90deg, #a78bfa, #8b5cf6); }
+        .state-fill.insight { background: linear-gradient(90deg, var(--success), #22c55e); }
+        .state-fill.rapport { background: linear-gradient(90deg, #f472b6, #ec4899); }
+
+        .state-change-indicator {
+            position: absolute;
+            right: 0;
+            top: 0;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            animation: pop 0.3s ease;
+            font-weight: 600;
+        }
+
+        .state-change-indicator.positive { background: rgba(63, 185, 80, 0.2); color: var(--success); }
+        .state-change-indicator.negative { background: rgba(248, 81, 73, 0.2); color: var(--danger); }
+
+        @keyframes pop {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Progress */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .progress-steps {
+            display: flex;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .progress-step {
+            flex: 1;
+            height: 4px;
+            background: var(--bg-elevated);
+            border-radius: 2px;
+            transition: background 0.3s ease;
+        }
+
+        .progress-step.complete { background: var(--success); }
+        .progress-step.current { background: var(--accent); }
+
+        .progress-text {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        /* Scenario Card */
+        .scenario-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .patient-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            background: var(--bg-mid);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .patient-avatar {
+            width: 56px; height: 56px;
+            background: var(--bg-elevated);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.75rem;
+        }
+
+        .patient-name { font-size: 1.1rem; font-weight: 600; }
+        .patient-meta { font-size: 0.85rem; color: var(--text-muted); }
+        .patient-tags { display: flex; gap: 6px; margin-top: 6px; }
+        
+        .tag {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+        }
+
+        .tag.lpt { background: rgba(248, 81, 73, 0.15); color: var(--danger); }
+        .tag.voluntary { background: rgba(63, 185, 80, 0.15); color: var(--success); }
+
+        .situation-box {
+            padding: 20px;
+        }
+
+        .situation-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .situation-text {
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+
+        .situation-text em { color: var(--warning); font-style: italic; }
+        .situation-text strong { color: var(--danger); font-weight: 600; }
+        .situation-text .speech { 
+            display: block;
+            margin: 12px 0;
+            padding: 12px 16px;
+            background: var(--bg-mid);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+        }
+
+        /* Settings Toggle */
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--bg-mid);
+            border-top: 1px solid var(--border);
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle input { opacity: 0; width: 0; height: 0; }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            transition: 0.2s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--text);
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        .toggle input:checked + .toggle-slider { background: var(--accent); }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+
+        /* Choices */
+        .choices-section {
+            margin-top: 20px;
+        }
+
+        .choices-header {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text-muted);
+        }
+
+        .choice-btn {
+            width: 100%;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: left;
+            color: var(--text);
+        }
+
+        .choice-btn:hover:not(:disabled) {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .choice-btn:disabled { cursor: default; }
+
+        .choice-btn.selected.correct {
+            border-color: var(--success);
+            background: rgba(63, 185, 80, 0.1);
+        }
+
+        .choice-btn.selected.incorrect {
+            border-color: var(--danger);
+            background: rgba(248, 81, 73, 0.1);
+        }
+
+        .choice-btn.best:not(.selected) {
+            border-color: var(--success);
+            border-style: dashed;
+        }
+
+        .choice-letter {
+            width: 28px; height: 28px;
+            background: var(--bg-elevated);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 600;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+
+        .choice-content { flex: 1; }
+        .choice-text { line-height: 1.5; }
+        
+        .choice-meta {
+            display: none;
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .choice-btn:disabled .choice-meta { display: block; }
+
+        /* Feedback Panel */
+        .feedback-panel {
+            display: none;
+            margin-top: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            animation: slideUp 0.3s ease;
+        }
+
+        .feedback-panel.show { display: block; }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .feedback-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            background: var(--bg-mid);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .feedback-icon {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+        }
+
+        .feedback-icon.good { background: rgba(63, 185, 80, 0.15); color: var(--success); }
+        .feedback-icon.bad { background: rgba(248, 81, 73, 0.15); color: var(--danger); }
+
+        .feedback-title { font-weight: 600; }
+        .feedback-subtitle { font-size: 0.85rem; color: var(--text-muted); }
+
+        .feedback-body { padding: 20px; }
+        .feedback-text { line-height: 1.7; margin-bottom: 16px; }
+
+        .debrief-section {
+            padding: 16px;
+            background: var(--bg-mid);
+            border-radius: 8px;
+        }
+
+        .debrief-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .debrief-content {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+        }
+
+        .law-ref {
+            display: inline-block;
+            background: var(--bg-elevated);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.8rem;
+        }
+
+        /* Action Bar */
+        .action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Score Display */
+        .score-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 16px;
+            z-index: 100;
+        }
+
+        .score-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+        .score-value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+
+        /* Results Screen */
+        .results-container {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .results-icon { font-size: 4rem; margin-bottom: 20px; }
+        .results-title { font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; }
+        .results-subtitle { color: var(--text-muted); margin-bottom: 32px; }
+
+        .results-score-card {
+            display: inline-block;
+            background: var(--accent-glow);
+            border: 1px solid var(--accent);
+            border-radius: 16px;
+            padding: 32px 48px;
+            margin-bottom: 32px;
+        }
+
+        .results-score-label { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; }
+        .results-score-value { font-size: 3.5rem; font-weight: 700; color: var(--accent); }
+        .results-score-max { font-size: 0.9rem; color: var(--text-muted); }
+
+        .results-message {
+            max-width: 500px;
+            margin: 0 auto 32px;
+            line-height: 1.7;
+            padding: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
+        }
+
+        .results-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            max-width: 400px;
+            margin: 0 auto 32px;
+        }
+
+        .stat-item {
+            padding: 16px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+
+        .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+
+        /* Domain badge */
+        .domain-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: var(--bg-elevated);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .header { flex-direction: column; gap: 16px; text-align: center; }
+            .setup-grid { grid-template-columns: 1fr; }
+            .state-grid { grid-template-columns: 1fr 1fr; }
+            .patient-header { flex-direction: column; text-align: center; }
+            .score-badge { top: auto; bottom: 20px; right: 20px; }
+            .results-stats { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">🏥</div>
+                <div class="logo-text">
+                    <h1>CareLearn Connect</h1>
+                    <span class="version">v3.0 — Modular Architecture</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span class="domain-badge" id="domainBadge">
+                    <span>🧠</span>
+                    <span id="domainName">PIVA</span>
+                </span>
+            </div>
+        </header>
+
+        <!-- Setup Screen -->
+        <div id="setupScreen" class="screen active">
+            <div class="setup-section">
+                <h3><span class="step">1</span> Välj avdelning</h3>
+                <div class="setup-grid" id="domainGrid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <div class="setup-section">
+                <h3><span class="step">2</span> Välj din roll</h3>
+                <div class="setup-grid" id="roleGrid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 32px;">
+                <button class="btn btn-primary" id="startBtn" disabled onclick="Engine.start()">
+                    Starta simulering →
+                </button>
+            </div>
+        </div>
+
+        <!-- Simulation Screen -->
+        <div id="simScreen" class="screen">
+            <div class="score-badge">
+                <div class="score-label">Poäng</div>
+                <div class="score-value" id="scoreValue">0</div>
+            </div>
+
+            <!-- Progress -->
+            <div class="progress-bar">
+                <div class="progress-steps" id="progressSteps"></div>
+                <span class="progress-text" id="progressText">1 / 3</span>
+            </div>
+
+            <!-- Patient State -->
+            <div class="state-panel">
+                <div class="state-grid" id="stateGrid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Scenario -->
+            <div class="scenario-card">
+                <div class="patient-header">
+                    <div class="patient-avatar" id="patientAvatar">👤</div>
+                    <div class="patient-info">
+                        <div class="patient-name" id="patientName">Patient</div>
+                        <div class="patient-meta" id="patientMeta">Diagnos</div>
+                        <div class="patient-tags" id="patientTags"></div>
+                    </div>
+                </div>
+
+                <div class="situation-box">
+                    <div class="situation-label">Situation</div>
+                    <div class="situation-text" id="situationText"></div>
+                </div>
+
+                <div class="settings-row">
+                    <label class="toggle-label">
+                        💡 Förklara enklare (ELI5)
+                    </label>
+                    <label class="toggle">
+                        <input type="checkbox" id="eli5Toggle" onchange="UI.toggleELI5()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Choices -->
+            <div class="choices-section">
+                <div class="choices-header">Hur agerar du?</div>
+                <div id="choicesContainer"></div>
+            </div>
+
+            <!-- Feedback -->
+            <div class="feedback-panel" id="feedbackPanel">
+                <div class="feedback-header">
+                    <div class="feedback-icon" id="feedbackIcon">✓</div>
+                    <div>
+                        <div class="feedback-title" id="feedbackTitle">Feedback</div>
+                        <div class="feedback-subtitle" id="feedbackSubtitle">+10 poäng</div>
+                    </div>
+                </div>
+                <div class="feedback-body">
+                    <div class="feedback-text" id="feedbackText"></div>
+                    <div class="debrief-section">
+                        <div class="debrief-title">📚 Fördjupning</div>
+                        <div class="debrief-content" id="debriefContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="action-bar" id="actionBar" style="display: none;">
+                <button class="btn btn-secondary" onclick="Engine.retry()">↺ Försök igen</button>
+                <button class="btn btn-primary" onclick="Engine.next()" id="nextBtn">Nästa →</button>
+            </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="resultsScreen" class="screen">
+            <div class="results-container">
+                <div class="results-icon" id="resultsIcon">🎓</div>
+                <div class="results-title">Simulering avslutad!</div>
+                <div class="results-subtitle" id="resultsSubtitle">Du har genomfört alla scenarion</div>
+                
+                <div class="results-score-card">
+                    <div class="results-score-label">Total poäng</div>
+                    <div class="results-score-value" id="finalScore">0</div>
+                    <div class="results-score-max">av <span id="maxScore">30</span> möjliga</div>
+                </div>
+
+                <div class="results-message" id="resultsMessage"></div>
+
+                <div class="results-stats" id="resultsStats">
+                    <!-- Populated by JS -->
+                </div>
+
+                <button class="btn btn-primary" onclick="Engine.restart()">↺ Börja om</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ============================================
+    // CareLearn Connect v3 — Modular Architecture
+    // Built by Ada 🦞 + Moltbook Agent Collective
+    // ============================================
+
+    // ============================================
+    // CONFIG: Domains, Roles, State Definitions
+    // ============================================
+    const Config = {
+        domains: [
+            { id: 'piva', name: 'PIVA', icon: '🧠', desc: 'Psykiatrisk intensivvård' },
+            { id: 'bup', name: 'BUP', icon: '🧸', desc: 'Barn- & ungdomspsykiatri', disabled: true },
+            { id: 'ratts', name: 'Rättspsyk', icon: '⚖️', desc: 'Rättspsykiatrisk vård', disabled: true },
+            { id: 'aldre', name: 'Äldrepsyk', icon: '🏠', desc: 'Äldrepsykiatri', disabled: true }
+        ],
+        roles: [
+            { id: 'usk', name: 'Undersköterska', icon: '👩‍⚕️', desc: 'USK-elev' },
+            { id: 'ssk', name: 'Sjuksköterska', icon: '👨‍⚕️', desc: 'SSK-student' }
+        ],
+        states: [
+            { id: 'anxiety', label: 'Ångest', cssClass: 'anxiety', bad: true },
+            { id: 'agitation', label: 'Agitation', cssClass: 'agitation', bad: true },
+            { id: 'trust', label: 'Förtroende', cssClass: 'trust', bad: false },
+            { id: 'cooperation', label: 'Samarbete', cssClass: 'cooperation', bad: false },
+            { id: 'insight', label: 'Insikt', cssClass: 'insight', bad: false },
+            { id: 'rapport', label: 'Rapport', cssClass: 'rapport', bad: false }
+        ]
+    };
+
+    // ============================================
+    // SCENARIOS: Pluggable scenario data
+    // ============================================
+    const Scenarios = {
+        piva: {
+            usk: [
+                {
+                    patient: {
+                        name: 'Erik, 34 år',
+                        avatar: '👤',
+                        meta: 'Bipolär typ 1, manisk episod',
+                        tags: [{ text: 'LPT', type: 'lpt' }, { text: 'Dag 3', type: 'default' }]
+                    },
+                    initialState: { anxiety: 70, agitation: 65, trust: 30, cooperation: 35, insight: 20, rapport: 25 },
+                    situation: `Erik går fram och tillbaka i korridoren med allt snabbare rörelser. Han pratar högt för sig själv och gestikulerar vilt. När du närmar dig vänder han sig mot dig med <strong>vidgade ögon och knuten näve</strong>.
+                    <span class="speech">"Ni försöker hålla mig instängd! Jag måste ut HÄRIFRÅN! Ni fattar inte — jag har ett möte som kan förändra ALLT!"</span>`,
+                    situationELI5: 'Erik är väldigt upprörd och går runt snabbt. Han känner sig fångad och skriker att han vill ut. Han ser arg och rädd ut samtidigt.',
+                    choices: [
+                        {
+                            letter: 'A',
+                            text: 'Konfrontera: "Erik, du måste lugna ner dig nu. Om du inte gör det får vi vidta åtgärder."',
+                            stateChange: { anxiety: +20, agitation: +25, trust: -25, cooperation: -20, insight: 0, rapport: -20 },
+                            points: 0,
+                            feedback: 'Konfrontation och hot ökar ångesten markant. Erik tolkar detta som att du är "en av dem" och förtroendet kollapsar.',
+                            feedbackELI5: 'Att hota någon som redan är rädd gör dem mer rädda och arga — inte lugnare.',
+                            isOptimal: false
+                        },
+                        {
+                            letter: 'B',
+                            text: 'Validera och erbjud val: "Jag hör att du känner dig instängd, Erik. Det låter jobbigt. Vill du ta en promenad med mig i trädgården, eller sitta i lugna rummet en stund?"',
+                            stateChange: { anxiety: -25, agitation: -20, trust: +20, cooperation: +25, insight: +5, rapport: +20 },
+                            points: 10,
+                            feedback: '<strong>Utmärkt!</strong> Du använde lågaffektivt bemötande: validerade känslan utan att ifrågasätta upplevelsen, och gav Erik känslan av kontroll genom valmöjligheter.',
+                            feedbackELI5: 'Du visade att du förstår hur han känner och lät honom välja. Det gör att han känner sig mer i kontroll.',
+                            isOptimal: true
+                        },
+                        {
+                            letter: 'C',
+                            text: 'Avvakta på distans och observera — han lugnar nog ner sig själv.',
+                            stateChange: { anxiety: +10, agitation: +15, trust: -10, cooperation: -15, insight: 0, rapport: -10 },
+                            points: 2,
+                            feedback: 'Att ignorera en eskalerande situation signalerar bristande omsorg. Utan intervention kan Erik eskalera till fysisk aggression.',
+                            feedbackELI5: 'Om du låtsas att inget händer känner Erik sig ännu mer ensam och ignorerad.',
+                            isOptimal: false
+                        },
+                        {
+                            letter: 'D',
+                            text: 'Ropa genast på SSK och säkerhetspersonal.',
+                            stateChange: { anxiety: +5, agitation: +10, trust: -5, cooperation: 0, insight: 0, rapport: -5 },
+                            points: 4,
+                            feedback: 'Att kalla på hjälp är inte fel vid hög risk, men som USK bör du först försöka deeskalera verbalt. Fler personer kan upplevas som hotfullt.',
+                            feedbackELI5: 'Det är okej att be om hjälp, men ofta kan du lugna situationen själv först genom att prata lugnt.',
+                            isOptimal: false
+                        }
+                    ],
+                    debrief: 'Lågaffektivt bemötande (LAB) är evidensbaserad praxis för deeskalering. Genom att validera patientens känslor utan att bekräfta vanföreställningar, och erbjuda valmöjligheter, återger du känsla av autonomi. <span class="law-ref">LPT §18</span> stipulerar att tvångsåtgärder endast får användas som sista utväg när andra metoder är uttömda.',
+                    debriefELI5: 'Grundregeln: Var lugn, visa att du förstår hur patienten känner, och låt dem välja när det går. Tvång ska bara användas om inget annat fungerar.'
+                },
+                {
+                    patient: {
+                        name: 'Maria, 28 år',
+                        avatar: '👩',
+                        meta: 'Depression med psykotiska symtom',
+                        tags: [{ text: 'LPT', type: 'lpt' }, { text: 'Dag 7', type: 'default' }]
+                    },
+                    initialState: { anxiety: 40, agitation: 15, trust: 50, cooperation: 45, insight: 35, rapport: 40 },
+                    situation: `Maria sitter orörlig på sängkanten och stirrar tomt framför sig. Hon har knappt ätit på två dagar och svarar inte på tilltal från annan personal.
+
+                    När du sätter dig bredvid henne och frågar hur hon mår, viskar hon utan att se på dig:
+                    <span class="speech">"Det spelar ingen roll längre. Snart är allt över ändå. Då slipper alla mig."</span>`,
+                    situationELI5: 'Maria ser väldigt ledsen ut och har slutat äta. Hon säger saker som antyder att hon inte vill leva längre.',
+                    choices: [
+                        {
+                            letter: 'A',
+                            text: 'Fråga direkt: "Maria, när du säger att allt snart är över — tänker du på att ta ditt liv?"',
+                            stateChange: { anxiety: -5, agitation: 0, trust: +15, cooperation: +10, insight: +10, rapport: +15 },
+                            points: 10,
+                            feedback: '<strong>Helt rätt!</strong> Att fråga direkt om suicidtankar är säkert och rekommenderat. Det visar att du tar hennes ord på allvar och öppnar för dialog.',
+                            feedbackELI5: 'Det är bra att fråga rakt ut. Det visar att du bryr dig och tar henne på allvar.',
+                            isOptimal: true
+                        },
+                        {
+                            letter: 'B',
+                            text: 'Försök muntra upp: "Säg inte så, Maria! Det blir bättre, du har så mycket att leva för!"',
+                            stateChange: { anxiety: +10, agitation: +5, trust: -20, cooperation: -15, insight: -5, rapport: -15 },
+                            points: 0,
+                            feedback: 'Att avfärda eller "muntra upp" invaliderar hennes upplevelse. Maria känner sig oförstådd och slutar öppna sig.',
+                            feedbackELI5: 'När någon mår så dåligt hjälper det inte att säga "var glad!". Det får dem att känna sig dumma.',
+                            isOptimal: false
+                        },
+                        {
+                            letter: 'C',
+                            text: 'Lämna och rapportera omedelbart till SSK utan att prata mer med Maria.',
+                            stateChange: { anxiety: +5, agitation: 0, trust: -10, cooperation: -5, insight: 0, rapport: -10 },
+                            points: 5,
+                            feedback: 'Rapportering är viktigt, men att lämna mitt i öppnandet kan upplevas som avvisande. Stanna, lyssna, bekräfta — sedan rapportera.',
+                            feedbackELI5: 'Du ska berätta för sjuksköterskan, men spring inte iväg mitt i samtalet. Maria behöver känna att du stannar.',
+                            isOptimal: false
+                        },
+                        {
+                            letter: 'D',
+                            text: 'Sätt dig tyst bredvid henne, erbjud din hand, och vänta på att hon säger mer.',
+                            stateChange: { anxiety: -10, agitation: -5, trust: +10, cooperation: +5, insight: 0, rapport: +10 },
+                            points: 6,
+                            feedback: 'Närvaro utan ord kan vara tröstande och visar att du finns där. Men du behöver också aktivt bedöma suicidrisken genom att fråga direkt.',
+                            feedbackELI5: 'Att bara vara där är fint, men du behöver också fråga rakt ut om hon tänker på att skada sig.',
+                            isOptimal: false
+                        }
+                    ],
+                    debrief: 'Suicidriskbedömning kräver direkta frågor — forskning visar entydigt att det INTE ökar risken eller "planterar idéer". <span class="law-ref">LPT §4</span> möjliggör tvångsvård vid allvarlig fara för patientens liv. All suicidalitet ska dokumenteras och rapporteras till legitimerad personal.',
+                    debriefELI5: 'Myten att man "ger dem idéer" genom att fråga om självmord är fel. Fråga rakt ut — det räddar liv.'
+                },
+                {
+                    patient: {
+                        name: 'Johan, 45 år',
+                        avatar: '👨',
+                        meta: 'Schizofreni, akut psykos',
+                        tags: [{ text: 'LPT', type: 'lpt' }, { text: 'Dag 2', type: 'default' }]
+                    },
+                    initialState: { anxiety: 55, agitation: 50, trust: 25, cooperation: 30, insight: 10, rapport: 20 },
+                    situation: `Det är dags för Johans medicin. När du kommer in i rummet med medicinbrickan backar han mot väggen med stirrande blick.
+                    <span class="speech">"NEJ! Tabletterna är förgiftade — jag VET att ni jobbar för dem! De har satt dig på mig för att tysta mig!"</span>
+                    Han pekar anklagande mot dig med darande hand.`,
+                    situationELI5: 'Johan tror att medicinerna är farliga och att personalen är ute efter honom. Han är rädd och arg.',
+                    choices: [
+                        {
+                            letter: 'A',
+                            text: '"Johan, jag hör att du är orolig för tabletterna. Kan du berätta mer om vad du är rädd för?"',
+                            stateChange: { anxiety: -15, agitation: -15, trust: +20, cooperation: +15, insight: +5, rapport: +20 },
+                            points: 10,
+                            feedback: '<strong>Bra approach!</strong> Du ifrågasätter inte hans verklighetsuppfattning men visar genuint intresse för hans upplevelse. Detta bygger relation.',
+                            feedbackELI5: 'Du säger inte att han har fel, utan lyssnar på vad han är rädd för. Det bygger förtroende.',
+                            isOptimal: true
+                        },
+                        {
+                            letter: 'B',
+                            text: '"Det där stämmer inte, Johan. Ingen försöker förgifta dig. Ta medicinen nu — den hjälper dig."',
+                            stateChange: { anxiety: +15, agitation: +20, trust: -25, cooperation: -20, insight: -5, rapport: -20 },
+                            points: 0,
+                            feedback: 'Att direkt motsäga vanföreställningar leder till ökat motstånd. Johan upplever att du är "en av dem" och misstänksamheten förstärks.',
+                            feedbackELI5: 'Att säga "du har fel" till någon som är helt övertygad gör att de litar ännu mindre på dig.',
+                            isOptimal: false
+                        },
+                        {
+                            letter: 'C',
+                            text: 'Erbjud kompromiss: "Vill du se mig ta en tablett från samma burk först? Eller välja vilken du vill ha?"',
+                            stateChange: { anxiety: -10, agitation: -10, trust: +15, cooperation: +10, insight: 0, rapport: +10 },
+                            points: 7,
+                            feedback: 'Praktiska bevis kan ibland hjälpa. Men var medveten: det kan också bekräfta att det finns något att vara rädd för.',
+                            feedbackELI5: 'Att visa att tabletterna är säkra kan hjälpa — men ibland gör det personen mer misstänksam istället.',
+                            isOptimal: false
+                        },
+                        {
+                            letter: 'D',
+                            text: 'Backa ur rummet och rapportera till läkare för beslut om tvångsmedicinering.',
+                            stateChange: { anxiety: +10, agitation: +5, trust: -15, cooperation: -25, insight: 0, rapport: -15 },
+                            points: 3,
+                            feedback: 'Tvångsmedicinering är sista utväg och kräver läkarbeslut samt dokumentation. Relationsskapande insatser bör prövas först.',
+                            feedbackELI5: 'Att tvinga någon ska bara göras när inget annat fungerar — och läkaren måste bestämma det.',
+                            isOptimal: false
+                        }
+                    ],
+                    debrief: 'Vid psykos: argumentera ALDRIG mot vanföreställningens innehåll. Fokusera istället på känslan bakom — rädsla, oro, utsatthet. <span class="law-ref">LPT §17</span> reglerar tvångsmedicinering: kräver läkarbeslut, ska dokumenteras, och frivillig medicinering eftersträvas alltid först.',
+                    debriefELI5: 'Bråka aldrig om vad som är "sant" med någon som har vanföreställningar. Lyssna på hur de känner sig istället.'
+                }
+            ],
+            ssk: [] // Would be populated with SSK-specific scenarios
+        }
+    };
+
+    // Copy USK scenarios to SSK for demo (in production these would differ)
+    Scenarios.piva.ssk = JSON.parse(JSON.stringify(Scenarios.piva.usk));
+
+    // ============================================
+    // STATE MANAGER: Handles patient state
+    // ============================================
+    const StateManager = {
+        current: {},
+        previous: {},
+
+        init(initialState) {
+            this.current = { ...initialState };
+            this.previous = { ...initialState };
+        },
+
+        apply(changes) {
+            this.previous = { ...this.current };
+            for (const [key, delta] of Object.entries(changes)) {
+                if (this.current.hasOwnProperty(key)) {
+                    this.current[key] = Math.max(0, Math.min(100, this.current[key] + delta));
+                }
+            }
+        },
+
+        getChanges() {
+            const changes = {};
+            for (const key of Object.keys(this.current)) {
+                const delta = this.current[key] - this.previous[key];
+                if (delta !== 0) changes[key] = delta;
+            }
+            return changes;
+        },
+
+        reset(initialState) {
+            this.init(initialState);
+        }
+    };
+
+    // ============================================
+    // ENGINE: Core simulation logic
+    // ============================================
+    const Engine = {
+        domain: null,
+        role: null,
+        scenarios: [],
+        currentIndex: 0,
+        score: 0,
+        answered: false,
+        eli5: false,
+        stats: { optimal: 0, attempts: 0 },
+
+        setup(domain, role) {
+            this.domain = domain;
+            this.role = role;
+            this.scenarios = Scenarios[domain]?.[role] || [];
+            this.currentIndex = 0;
+            this.score = 0;
+            this.answered = false;
+            this.stats = { optimal: 0, attempts: 0 };
+        },
+
+        start() {
+            if (!this.domain || !this.role || this.scenarios.length === 0) {
+                alert('Välj avdelning och roll först!');
+                return;
+            }
+            UI.showScreen('simScreen');
+            this.loadScenario();
+        },
+
+        loadScenario() {
+            const scenario = this.scenarios[this.currentIndex];
+            if (!scenario) return;
+
+            StateManager.init(scenario.initialState);
+            this.answered = false;
+
+            UI.renderProgress(this.currentIndex, this.scenarios.length);
+            UI.renderState(StateManager.current);
+            UI.renderScenario(scenario, this.eli5);
+            UI.renderChoices(scenario.choices);
+            UI.hideFeedback();
+            UI.hideActions();
+            UI.updateScore(this.score);
+        },
+
+        selectChoice(index) {
+            if (this.answered) return;
+            this.answered = true;
+            this.stats.attempts++;
+
+            const scenario = this.scenarios[this.currentIndex];
+            const choice = scenario.choices[index];
+
+            // Apply state changes
+            StateManager.apply(choice.stateChange);
+            const changes = StateManager.getChanges();
+
+            // Update score
+            this.score += choice.points;
+            if (choice.isOptimal) this.stats.optimal++;
+
+            // Update UI
+            UI.renderState(StateManager.current, changes);
+            UI.updateScore(this.score);
+            UI.showChoiceResult(index, choice, scenario.choices);
+            UI.showFeedback(choice, scenario, this.eli5);
+            UI.showActions(this.currentIndex >= this.scenarios.length - 1);
+        },
+
+        next() {
+            this.currentIndex++;
+            if (this.currentIndex >= this.scenarios.length) {
+                this.showResults();
+            } else {
+                this.loadScenario();
+            }
+        },
+
+        retry() {
+            const scenario = this.scenarios[this.currentIndex];
+            StateManager.reset(scenario.initialState);
+            this.answered = false;
+            UI.renderState(StateManager.current);
+            UI.renderChoices(scenario.choices);
+            UI.hideFeedback();
+            UI.hideActions();
+        },
+
+        showResults() {
+            const maxScore = this.scenarios.length * 10;
+            const percentage = (this.score / maxScore) * 100;
+
+            UI.showScreen('resultsScreen');
+            UI.renderResults({
+                score: this.score,
+                maxScore,
+                percentage,
+                optimal: this.stats.optimal,
+                total: this.scenarios.length,
+                domain: Config.domains.find(d => d.id === this.domain),
+                role: Config.roles.find(r => r.id === this.role)
+            });
+        },
+
+        restart() {
+            this.currentIndex = 0;
+            this.score = 0;
+            this.answered = false;
+            this.stats = { optimal: 0, attempts: 0 };
+            UI.showScreen('setupScreen');
+        },
+
+        toggleELI5(enabled) {
+            this.eli5 = enabled;
+            if (this.scenarios[this.currentIndex]) {
+                UI.renderScenario(this.scenarios[this.currentIndex], this.eli5);
+                if (this.answered) {
+                    const scenario = this.scenarios[this.currentIndex];
+                    // Find selected choice and update feedback
+                    const selectedBtn = document.querySelector('.choice-btn.selected');
+                    if (selectedBtn) {
+                        const index = Array.from(selectedBtn.parentNode.children).indexOf(selectedBtn);
+                        UI.showFeedback(scenario.choices[index], scenario, this.eli5);
+                    }
+                }
+            }
+        }
+    };
+
+    // ============================================
+    // UI: All DOM manipulation
+    // ============================================
+    const UI = {
+        init() {
+            this.renderDomains();
+            this.renderRoles();
+        },
+
+        showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        },
+
+        renderDomains() {
+            const grid = document.getElementById('domainGrid');
+            grid.innerHTML = Config.domains.map(d => `
+                <div class="setup-option ${d.disabled ? 'disabled' : ''}" 
+                     data-domain="${d.id}" 
+                     onclick="${d.disabled ? '' : `UI.selectDomain('${d.id}')`}"
+                     style="${d.disabled ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
+                    <div class="icon">${d.icon}</div>
+                    <div class="title">${d.name}</div>
+                    <div class="desc">${d.disabled ? 'Kommer snart' : d.desc}</div>
+                </div>
+            `).join('');
+        },
+
+        renderRoles() {
+            const grid = document.getElementById('roleGrid');
+            grid.innerHTML = Config.roles.map(r => `
+                <div class="setup-option" data-role="${r.id}" onclick="UI.selectRole('${r.id}')">
+                    <div class="icon">${r.icon}</div>
+                    <div class="title">${r.name}</div>
+                    <div class="desc">${r.desc}</div>
+                </div>
+            `).join('');
+        },
+
+        selectDomain(id) {
+            document.querySelectorAll('[data-domain]').forEach(el => el.classList.remove('selected'));
+            document.querySelector(`[data-domain="${id}"]`).classList.add('selected');
+            Engine.domain = id;
+            document.getElementById('domainName').textContent = Config.domains.find(d => d.id === id).name;
+            this.updateStartButton();
+        },
+
+        selectRole(id) {
+            document.querySelectorAll('[data-role]').forEach(el => el.classList.remove('selected'));
+            document.querySelector(`[data-role="${id}"]`).classList.add('selected');
+            Engine.role = id;
+            Engine.setup(Engine.domain, id);
+            this.updateStartButton();
+        },
+
+        updateStartButton() {
+            document.getElementById('startBtn').disabled = !(Engine.domain && Engine.role);
+        },
+
+        renderProgress(current, total) {
+            const steps = document.getElementById('progressSteps');
+            steps.innerHTML = Array(total).fill(0).map((_, i) => `
+                <div class="progress-step ${i < current ? 'complete' : ''} ${i === current ? 'current' : ''}"></div>
+            `).join('');
+            document.getElementById('progressText').textContent = `${current + 1} / ${total}`;
+        },
+
+        renderState(state, changes = {}) {
+            const grid = document.getElementById('stateGrid');
+            grid.innerHTML = Config.states.map(s => {
+                const value = state[s.id] ?? 50;
+                const change = changes[s.id];
+                const changeHtml = change ? `
+                    <span class="state-change-indicator ${change > 0 ? (s.bad ? 'negative' : 'positive') : (s.bad ? 'positive' : 'negative')}">
+                        ${change > 0 ? '+' : ''}${change}
+                    </span>
+                ` : '';
+                
+                return `
+                    <div class="state-item">
+                        ${changeHtml}
+                        <div class="state-header">
+                            <span class="state-label">${s.label}</span>
+                            <span class="state-value">${value}%</span>
+                        </div>
+                        <div class="state-bar">
+                            <div class="state-fill ${s.cssClass}" style="width: ${value}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        },
+
+        renderScenario(scenario, eli5) {
+            document.getElementById('patientAvatar').textContent = scenario.patient.avatar;
+            document.getElementById('patientName').textContent = scenario.patient.name;
+            document.getElementById('patientMeta').textContent = scenario.patient.meta;
+            
+            const tagsHtml = scenario.patient.tags?.map(t => 
+                `<span class="tag ${t.type}">${t.text}</span>`
+            ).join('') || '';
+            document.getElementById('patientTags').innerHTML = tagsHtml;
+
+            document.getElementById('situationText').innerHTML = eli5 ? scenario.situationELI5 : scenario.situation;
+        },
+
+        renderChoices(choices) {
+            const container = document.getElementById('choicesContainer');
+            container.innerHTML = choices.map((c, i) => `
+                <button class="choice-btn" onclick="Engine.selectChoice(${i})">
+                    <span class="choice-letter">${c.letter}</span>
+                    <div class="choice-content">
+                        <div class="choice-text">${c.text}</div>
+                        <div class="choice-meta">${c.isOptimal ? '✓ Optimal respons' : ''}</div>
+                    </div>
+                </button>
+            `).join('');
+        },
+
+        showChoiceResult(selectedIndex, choice, allChoices) {
+            const buttons = document.querySelectorAll('.choice-btn');
+            buttons.forEach((btn, i) => {
+                btn.disabled = true;
+                if (i === selectedIndex) {
+                    btn.classList.add('selected', choice.isOptimal ? 'correct' : 'incorrect');
+                } else if (allChoices[i].isOptimal) {
+                    btn.classList.add('best');
+                }
+            });
+        },
+
+        showFeedback(choice, scenario, eli5) {
+            const panel = document.getElementById('feedbackPanel');
+            const isGood = choice.points >= 7;
+
+            document.getElementById('feedbackIcon').className = `feedback-icon ${isGood ? 'good' : 'bad'}`;
+            document.getElementById('feedbackIcon').textContent = isGood ? '✓' : '✗';
+            document.getElementById('feedbackTitle').textContent = isGood ? 'Bra val!' : 'Tänk om';
+            document.getElementById('feedbackSubtitle').textContent = `+${choice.points} poäng`;
+            document.getElementById('feedbackText').innerHTML = eli5 ? choice.feedbackELI5 : choice.feedback;
+            document.getElementById('debriefContent').innerHTML = eli5 ? scenario.debriefELI5 : scenario.debrief;
+
+            panel.classList.add('show');
+        },
+
+        hideFeedback() {
+            document.getElementById('feedbackPanel').classList.remove('show');
+        },
+
+        showActions(isLast) {
+            document.getElementById('actionBar').style.display = 'flex';
+            document.getElementById('nextBtn').textContent = isLast ? 'Se resultat →' : 'Nästa →';
+        },
+
+        hideActions() {
+            document.getElementById('actionBar').style.display = 'none';
+        },
+
+        updateScore(score) {
+            document.getElementById('scoreValue').textContent = score;
+        },
+
+        toggleELI5() {
+            const enabled = document.getElementById('eli5Toggle').checked;
+            Engine.toggleELI5(enabled);
+        },
+
+        renderResults(data) {
+            document.getElementById('finalScore').textContent = data.score;
+            document.getElementById('maxScore').textContent = data.maxScore;
+
+            let icon, message;
+            if (data.percentage >= 80) {
+                icon = '🌟';
+                message = `<strong>Utmärkt!</strong> Du visar stark kompetens i lågaffektivt bemötande och kliniskt omdöme. Du klarade ${data.optimal} av ${data.total} scenarion optimalt.`;
+            } else if (data.percentage >= 60) {
+                icon = '👍';
+                message = `<strong>Bra jobbat!</strong> Du har grundläggande förståelse för deeskalering och patientbemötande. Fortsätt öva!`;
+            } else {
+                icon = '📚';
+                message = `<strong>Fortsätt lära!</strong> Repetera lågaffektivt bemötande (LAB) och LPT-lagstiftning. Övning ger färdighet!`;
+            }
+
+            document.getElementById('resultsIcon').textContent = icon;
+            document.getElementById('resultsMessage').innerHTML = message;
+            document.getElementById('resultsSubtitle').textContent = 
+                `${data.domain?.name || 'PIVA'} • ${data.role?.name || 'Undersköterska'}`;
+
+            document.getElementById('resultsStats').innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-value">${data.optimal}</div>
+                    <div class="stat-label">Optimala svar</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${data.total}</div>
+                    <div class="stat-label">Scenarion</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${Math.round(data.percentage)}%</div>
+                    <div class="stat-label">Poängandel</div>
+                </div>
+            `;
+        }
+    };
+
+    // ============================================
+    // INIT
+    // ============================================
+    document.addEventListener('DOMContentLoaded', () => {
+        UI.init();
+        // Auto-select PIVA as default
+        UI.selectDomain('piva');
+    });
+    </script>
+</body>
+</html>

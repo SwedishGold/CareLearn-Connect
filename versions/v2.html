@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareLearn Connect v2</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-mid: #16213e;
+            --bg-light: #0f3460;
+            --accent: #00d4aa;
+            --accent-dark: #00a8cc;
+            --text: #e8e8e8;
+            --text-muted: #8892b0;
+            --danger: #ff6b6b;
+            --warning: #feca57;
+            --success: #00d4aa;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-light) 100%);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 25px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 25px;
+        }
+
+        .logo { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 8px; }
+        .logo-icon {
+            width: 45px; height: 45px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(90deg, var(--accent), var(--accent-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(0,212,170,0.2);
+            color: var(--accent);
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        .tagline { color: var(--text-muted); font-size: 0.9rem; margin-top: 6px; }
+
+        /* Patient State Display - NEW in v2! */
+        .patient-state {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+        }
+
+        .state-item {
+            text-align: center;
+        }
+
+        .state-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .state-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 3px;
+        }
+
+        .state-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease, background-color 0.3s ease;
+        }
+
+        .state-fill.anxiety { background: linear-gradient(90deg, var(--warning), var(--danger)); }
+        .state-fill.trust { background: linear-gradient(90deg, var(--accent-dark), var(--accent)); }
+        .state-fill.cooperation { background: linear-gradient(90deg, #a29bfe, #6c5ce7); }
+
+        .state-value {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        /* Role Selection */
+        .role-selection {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        .role-card {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 25px 35px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            min-width: 160px;
+        }
+
+        .role-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .role-card.selected {
+            border-color: var(--accent);
+            background: rgba(0,212,170,0.1);
+            box-shadow: 0 0 25px rgba(0,212,170,0.15);
+        }
+
+        .role-icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .role-title { font-size: 1.2rem; font-weight: 600; margin-bottom: 4px; }
+        .role-desc { font-size: 0.8rem; color: var(--text-muted); }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            color: var(--bg-dark);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 5px 20px rgba(0,212,170,0.3); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: var(--text); }
+
+        .actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+
+        /* Scenario Card */
+        .scenario-section { display: none; }
+        .scenario-section.active { display: block; animation: fadeIn 0.4s ease; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .scenario-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 14px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .patient-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .patient-avatar {
+            width: 60px; height: 60px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem;
+        }
+
+        .patient-name { font-size: 1.2rem; font-weight: 600; margin-bottom: 4px; }
+        .patient-meta { font-size: 0.85rem; color: var(--text-muted); }
+
+        .situation-text {
+            line-height: 1.7;
+            font-size: 1rem;
+        }
+
+        .situation-text em { color: var(--warning); font-style: italic; }
+        .situation-text strong { color: var(--danger); }
+
+        /* ELI5 Toggle - NEW in v2! */
+        .eli5-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .eli5-toggle:hover { background: rgba(255,255,255,0.08); }
+        .eli5-toggle input { display: none; }
+        
+        .eli5-checkbox {
+            width: 18px; height: 18px;
+            border: 2px solid var(--text-muted);
+            border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .eli5-toggle input:checked + .eli5-checkbox {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .eli5-toggle input:checked + .eli5-checkbox::after {
+            content: '✓';
+            color: var(--bg-dark);
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .eli5-label { font-size: 0.85rem; color: var(--text-muted); }
+        .eli5-hint { font-size: 0.75rem; color: var(--text-muted); opacity: 0.7; margin-left: auto; }
+
+        /* Choices */
+        .choices-header {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .choice-btn {
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            text-align: left;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .choice-btn:hover:not(:disabled) {
+            border-color: var(--accent);
+            background: rgba(0,212,170,0.05);
+        }
+
+        .choice-btn:disabled { cursor: default; }
+        .choice-btn.correct { border-color: var(--success); background: rgba(0,212,170,0.1); }
+        .choice-btn.incorrect { border-color: var(--danger); background: rgba(255,107,107,0.1); }
+
+        .choice-letter {
+            width: 28px; height: 28px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .choice-text { flex: 1; line-height: 1.5; }
+
+        /* Feedback */
+        .feedback {
+            display: none;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .feedback.show { display: block; animation: fadeIn 0.3s ease; }
+        .feedback-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-weight: 600; font-size: 1.1rem; }
+        .feedback-text { line-height: 1.6; color: var(--text-muted); }
+        .feedback-text strong { color: var(--text); }
+
+        /* Debrief Section - NEW in v2! */
+        .debrief {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .debrief-title {
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .debrief-content {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+        }
+
+        .debrief-content .law-ref {
+            display: inline-block;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            margin: 0 2px;
+        }
+
+        /* Progress */
+        .progress-container { margin-bottom: 20px; }
+        .progress-text { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+        .progress-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+
+        /* Score */
+        .score-display {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(10px);
+            padding: 10px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 100;
+        }
+
+        .score-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .score-value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+
+        /* Results */
+        .results-card {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .results-icon { font-size: 4rem; margin-bottom: 20px; }
+        .results-title { font-size: 1.8rem; margin-bottom: 10px; }
+        .results-subtitle { color: var(--text-muted); margin-bottom: 30px; }
+
+        .results-score {
+            background: rgba(0,212,170,0.1);
+            border-radius: 16px;
+            padding: 25px;
+            display: inline-block;
+            margin-bottom: 25px;
+        }
+
+        .results-score-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 5px; }
+        .results-score-value { font-size: 2.8rem; font-weight: 700; color: var(--accent); }
+        .results-score-max { font-size: 0.85rem; color: var(--text-muted); }
+
+        /* State Change Indicator */
+        .state-change {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+
+        .state-change.positive { background: rgba(0,212,170,0.2); color: var(--accent); }
+        .state-change.negative { background: rgba(255,107,107,0.2); color: var(--danger); }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .role-selection { flex-direction: column; align-items: center; }
+            .patient-info { flex-direction: column; text-align: center; }
+            .patient-state { grid-template-columns: 1fr 1fr; }
+            .score-display { top: 10px; right: 10px; padding: 8px 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">🏥</div>
+                <h1>CareLearn Connect</h1>
+            </div>
+            <div class="version-badge">v2.0 — State-Based</div>
+            <p class="tagline">Dynamisk simuleringsträning för psykiatrisk vård</p>
+        </header>
+
+        <!-- Role Selection -->
+        <div id="roleScreen">
+            <h2 style="text-align: center; margin-bottom: 20px; font-weight: 400; color: #ccd6f6;">Välj din roll</h2>
+            
+            <div class="role-selection">
+                <div class="role-card" onclick="selectRole('usk')" id="uskCard">
+                    <div class="role-icon">👩‍⚕️</div>
+                    <div class="role-title">Undersköterska</div>
+                    <div class="role-desc">USK-elev</div>
+                </div>
+                
+                <div class="role-card" onclick="selectRole('ssk')" id="sskCard">
+                    <div class="role-icon">👨‍⚕️</div>
+                    <div class="role-title">Sjuksköterska</div>
+                    <div class="role-desc">SSK-student</div>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button class="btn" id="startBtn" onclick="startScenario()" disabled>Starta simulering →</button>
+            </div>
+        </div>
+
+        <!-- Scenario Screen -->
+        <div id="scenarioScreen" class="scenario-section">
+            <div class="score-display">
+                <div class="score-label">Poäng</div>
+                <div class="score-value" id="scoreValue">0</div>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-text">Scenario <span id="currentScenario">1</span> av <span id="totalScenarios">3</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+
+            <!-- Patient State - NEW! -->
+            <div class="patient-state" id="patientState">
+                <div class="state-item">
+                    <div class="state-label">Ångestnivå</div>
+                    <div class="state-bar"><div class="state-fill anxiety" id="anxietyBar"></div></div>
+                    <div class="state-value" id="anxietyValue">50%</div>
+                </div>
+                <div class="state-item">
+                    <div class="state-label">Förtroende</div>
+                    <div class="state-bar"><div class="state-fill trust" id="trustBar"></div></div>
+                    <div class="state-value" id="trustValue">50%</div>
+                </div>
+                <div class="state-item">
+                    <div class="state-label">Samarbetsvilja</div>
+                    <div class="state-bar"><div class="state-fill cooperation" id="cooperationBar"></div></div>
+                    <div class="state-value" id="cooperationValue">50%</div>
+                </div>
+            </div>
+
+            <div class="scenario-card">
+                <div class="patient-info">
+                    <div class="patient-avatar" id="patientAvatar">👤</div>
+                    <div>
+                        <div class="patient-name" id="patientName">Erik, 34 år</div>
+                        <div class="patient-meta" id="patientMeta">Bipolär typ 1, manisk episod • Dag 3 på PIVA</div>
+                    </div>
+                </div>
+                
+                <div class="situation-text" id="situationText"></div>
+
+                <!-- ELI5 Toggle - NEW! -->
+                <label class="eli5-toggle">
+                    <input type="checkbox" id="eli5Toggle" onchange="toggleELI5()">
+                    <span class="eli5-checkbox"></span>
+                    <span class="eli5-label">💡 Förklara enklare</span>
+                    <span class="eli5-hint">Visar förenklad förklaring</span>
+                </label>
+            </div>
+
+            <div class="choices-header">Hur agerar du?</div>
+            <div id="choicesContainer"></div>
+
+            <div id="feedback" class="feedback">
+                <div class="feedback-header">
+                    <span id="feedbackIcon">✓</span>
+                    <span id="feedbackTitle">Feedback</span>
+                </div>
+                <div class="feedback-text" id="feedbackText"></div>
+                
+                <!-- Debrief - NEW! -->
+                <div class="debrief" id="debrief">
+                    <div class="debrief-title">📚 Fördjupning & lagstöd</div>
+                    <div class="debrief-content" id="debriefContent"></div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-secondary" onclick="resetScenario()" id="resetBtn" style="display: none;">↺ Försök igen</button>
+                <button class="btn" onclick="nextScenario()" id="nextBtn" style="display: none;">Nästa scenario →</button>
+            </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="resultsScreen" class="scenario-section">
+            <div class="results-card">
+                <div class="results-icon">🎓</div>
+                <div class="results-title">Simulering avslutad!</div>
+                <div class="results-subtitle">Du har genomfört alla scenarion</div>
+                
+                <div class="results-score">
+                    <div class="results-score-label">Din totala poäng</div>
+                    <div class="results-score-value" id="finalScore">0</div>
+                    <div class="results-score-max">av <span id="maxScore">30</span> möjliga</div>
+                </div>
+                
+                <div id="resultMessage" style="max-width: 500px; margin: 0 auto 25px; line-height: 1.7;"></div>
+                
+                <div class="actions">
+                    <button class="btn" onclick="restartAll()">↺ Börja om</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CareLearn Connect v2 — State-Based System
+        // Built by Ada 🦞 with feedback from Moltbook agents
+        // ============================================
+
+        let selectedRole = null;
+        let currentScenarioIndex = 0;
+        let score = 0;
+        let answered = false;
+        let eli5Mode = false;
+
+        // Patient State Object — Core of v2!
+        let patientState = {
+            anxiety: 60,      // 0-100
+            trust: 40,        // 0-100
+            cooperation: 50   // 0-100
+        };
+
+        // Scenarios with state-based outcomes
+        const scenarios = {
+            usk: [
+                {
+                    patient: { 
+                        name: 'Erik, 34 år', 
+                        avatar: '👤', 
+                        meta: 'Bipolär typ 1, manisk episod • Dag 3 på PIVA' 
+                    },
+                    initialState: { anxiety: 70, trust: 30, cooperation: 40 },
+                    situation: 'Erik går fram och tillbaka i korridoren. Hans rörelser blir allt snabbare och han pratar högt för sig själv. När du närmar dig vänder han sig mot dig med <strong>vidgade ögon och knuten näve</strong>: <em>"Ni försöker hålla mig instängd! Jag måste ut HÄRIFRÅN!"</em>',
+                    situationELI5: 'Erik är väldigt upprörd och går runt snabbt. Han känner sig fångad och skriker att han vill ut. Han ser arg och rädd ut samtidigt.',
+                    choices: [
+                        { 
+                            letter: 'A', 
+                            text: 'Konfrontera direkt: "Erik, du måste lugna ner dig nu annars får vi vidta åtgärder"',
+                            stateChange: { anxiety: +20, trust: -25, cooperation: -20 },
+                            points: 0,
+                            feedback: 'Konfrontation och hot ökar ångesten och bryter förtroendet. Patienten kan eskalera ytterligare.',
+                            feedbackELI5: 'Att hota någon som redan är rädd gör dem mer rädda, inte lugnare.'
+                        },
+                        { 
+                            letter: 'B', 
+                            text: 'Validera känslorna och erbjud val: "Jag hör att du känner dig instängd. Vill du ta en promenad med mig eller sitta i lugna rummet?"',
+                            stateChange: { anxiety: -25, trust: +20, cooperation: +25 },
+                            points: 10,
+                            feedback: '<strong>Utmärkt!</strong> Du använde lågaffektivt bemötande och gav Erik känslan av kontroll genom att erbjuda val.',
+                            feedbackELI5: 'Du visade att du förstår hur han känner och lät honom välja. Det gör att han känner sig mer i kontroll och mindre rädd.'
+                        },
+                        { 
+                            letter: 'C', 
+                            text: 'Ignorera och avvakta — han lugnar nog ner sig själv',
+                            stateChange: { anxiety: +10, trust: -10, cooperation: -15 },
+                            points: 2,
+                            feedback: 'Att ignorera signalerar att du inte bryr dig. Situationen kan eskalera utan intervention.',
+                            feedbackELI5: 'Om du låtsas som att inget händer känner Erik sig ännu mer ensam och ignorerad.'
+                        },
+                        { 
+                            letter: 'D', 
+                            text: 'Ropa genast på SSK för hjälp',
+                            stateChange: { anxiety: +5, trust: -5, cooperation: 0 },
+                            points: 4,
+                            feedback: 'Att kalla på hjälp är inte fel, men som USK bör du först försöka deeskalera själv. SSK kan behövas för medicinering senare.',
+                            feedbackELI5: 'Det är okej att be om hjälp, men du kan ofta lugna situationen själv först genom att prata lugnt.'
+                        }
+                    ],
+                    debrief: 'Lågaffektivt bemötande (LAB) är grunden för deeskalering i psykiatrisk vård. Genom att validera patientens känslor och erbjuda valmöjligheter återger du en känsla av kontroll. <span class="law-ref">LPT §18</span> anger att tvångsåtgärder endast får användas som sista utväg.',
+                    debriefELI5: 'Grundregeln: Var lugn, visa att du förstår, och låt patienten välja när det går. Tvång ska bara användas om inget annat fungerar — det står i lagen.'
+                },
+                {
+                    patient: { 
+                        name: 'Maria, 28 år', 
+                        avatar: '👩', 
+                        meta: 'Depression med psykotiska symtom • Dag 7 på PIVA' 
+                    },
+                    initialState: { anxiety: 40, trust: 50, cooperation: 45 },
+                    situation: 'Maria sitter på sängkanten och stirrar tomt framför sig. Hon har inte ätit på två dagar. När du frågar hur hon mår viskar hon: <em>"Det spelar ingen roll längre. Snart är allt över ändå."</em>',
+                    situationELI5: 'Maria ser väldigt ledsen ut och har slutat äta. Hon säger saker som antyder att hon inte vill leva längre.',
+                    choices: [
+                        { 
+                            letter: 'A', 
+                            text: 'Fråga direkt: "Maria, tänker du på att ta ditt liv?"',
+                            stateChange: { anxiety: -5, trust: +15, cooperation: +10 },
+                            points: 10,
+                            feedback: '<strong>Helt rätt!</strong> Att fråga direkt om suicidtankar är säkert och visar att du tar hennes ord på allvar.',
+                            feedbackELI5: 'Det är bra att fråga rakt ut. Det visar att du bryr dig och tar henne på allvar. Det "planterar inte idéer".'
+                        },
+                        { 
+                            letter: 'B', 
+                            text: 'Försök muntra upp: "Tänk inte så! Det blir bättre snart, du har ju så mycket att leva för!"',
+                            stateChange: { anxiety: +10, trust: -20, cooperation: -15 },
+                            points: 0,
+                            feedback: 'Att avfärda eller "muntra upp" kan få patienten att känna sig oförstådd och sluta öppna sig.',
+                            feedbackELI5: 'När någon mår dåligt hjälper det inte att säga "var glad!". Det får dem att känna sig dumma för att de mår dåligt.'
+                        },
+                        { 
+                            letter: 'C', 
+                            text: 'Rapportera genast till SSK utan att prata mer med Maria',
+                            stateChange: { anxiety: +5, trust: -10, cooperation: -5 },
+                            points: 5,
+                            feedback: 'Att rapportera är viktigt, men att lämna mitt i samtalet kan upplevas som avvisande. Stanna kvar, lyssna, sedan rapportera.',
+                            feedbackELI5: 'Du ska berätta för sjuksköterskan, men spring inte iväg mitt i samtalet. Maria behöver känna att du stannar.'
+                        },
+                        { 
+                            letter: 'D', 
+                            text: 'Sätt dig bredvid henne tyst och håll hennes hand om hon tillåter',
+                            stateChange: { anxiety: -10, trust: +10, cooperation: +5 },
+                            points: 7,
+                            feedback: 'Närvaro utan ord kan vara tröstande, men du behöver också bedöma suicidrisken aktivt genom att fråga.',
+                            feedbackELI5: 'Att bara vara där är fint, men du behöver också fråga direkt om hon tänker på att skada sig.'
+                        }
+                    ],
+                    debrief: 'Suicidriskbedömning kräver direkta frågor — forskning visar att det INTE ökar risken. <span class="law-ref">LPT §4</span> möjliggör tvångsvård vid allvarlig fara för patientens liv. Dokumentation och rapportering till legitimerad personal är obligatoriskt.',
+                    debriefELI5: 'Myten att man "planterar idéer" genom att fråga om självmord är fel. Fråga rakt ut. Om någon är i fara för sitt liv kan de vårdas även om de inte vill — det står i lagen.'
+                },
+                {
+                    patient: { 
+                        name: 'Johan, 45 år', 
+                        avatar: '👨', 
+                        meta: 'Schizofreni, akut psykos • Dag 2 på PIVA' 
+                    },
+                    initialState: { anxiety: 55, trust: 35, cooperation: 30 },
+                    situation: 'Johan vägrar ta sin medicin. Han säger: <em>"Tabletterna är förgiftade! Jag vet att ni jobbar för dem som vill tysta mig!"</em> Han pekar anklagande mot dig.',
+                    situationELI5: 'Johan tror att medicinerna är farliga och att personalen är ute efter honom. Han är rädd och arg.',
+                    choices: [
+                        { 
+                            letter: 'A', 
+                            text: '"Johan, jag förstår att du är orolig. Kan du berätta mer om vad du är rädd för?"',
+                            stateChange: { anxiety: -15, trust: +20, cooperation: +15 },
+                            points: 10,
+                            feedback: '<strong>Bra approach!</strong> Du ifrågasätter inte hans verklighetsuppfattning men visar intresse för hans upplevelse.',
+                            feedbackELI5: 'Du säger inte att han har fel, men du lyssnar på vad han är rädd för. Det bygger förtroende.'
+                        },
+                        { 
+                            letter: 'B', 
+                            text: '"Det där är inte sant, Johan. Ingen försöker förgifta dig. Ta medicinen nu."',
+                            stateChange: { anxiety: +15, trust: -25, cooperation: -20 },
+                            points: 0,
+                            feedback: 'Att direkt motsäga vanföreställningar leder ofta till mer motstånd och ökad misstänksamhet.',
+                            feedbackELI5: 'Att säga "du har fel" till någon som är övertygad gör att de litar ännu mindre på dig.'
+                        },
+                        { 
+                            letter: 'C', 
+                            text: 'Erbjud alternativ: "Vill du se mig ta en tablett från samma burk först?"',
+                            stateChange: { anxiety: -10, trust: +15, cooperation: +10 },
+                            points: 8,
+                            feedback: 'Att erbjuda "bevis" kan hjälpa, men var försiktig — det kan också bekräfta att det finns något att vara rädd för.',
+                            feedbackELI5: 'Att visa att tabletterna är säkra kan hjälpa, men ibland gör det personen mer misstänksam istället.'
+                        },
+                        { 
+                            letter: 'D', 
+                            text: 'Ge upp för stunden och rapportera till SSK för tvångsmedicinering',
+                            stateChange: { anxiety: +10, trust: -15, cooperation: -25 },
+                            points: 3,
+                            feedback: 'Tvångsmedicinering är sista utväg och kräver läkarbeslut. Försök först bygga relation.',
+                            feedbackELI5: 'Att tvinga någon ska bara göras när inget annat fungerar, och läkaren måste bestämma det.'
+                        }
+                    ],
+                    debrief: 'Vid psykos: argumentera aldrig mot vanföreställningar. Fokusera på känslorna bakom, inte innehållet. <span class="law-ref">LPT §17</span> reglerar tvångsmedicinering — den kräver läkarbeslut och ska dokumenteras. Frivillig medicinering eftersträvas alltid först.',
+                    debriefELI5: 'Bråka aldrig om vad som är "sant" med någon som har vanföreställningar. Lyssna på hur de känner sig istället. Tvång är sista utväget.'
+                }
+            ],
+            ssk: [
+                // SSK scenarios would go here - similar structure
+                // For now, using same scenarios as USK for demo
+            ]
+        };
+
+        // Initialize SSK with USK scenarios for demo
+        scenarios.ssk = JSON.parse(JSON.stringify(scenarios.usk));
+
+        // ============================================
+        // Core Functions
+        // ============================================
+
+        function selectRole(role) {
+            selectedRole = role;
+            document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+            document.getElementById(role + 'Card').classList.add('selected');
+            document.getElementById('startBtn').disabled = false;
+        }
+
+        function startScenario() {
+            document.getElementById('roleScreen').classList.remove('active');
+            document.getElementById('roleScreen').style.display = 'none';
+            document.getElementById('scenarioScreen').classList.add('active');
+            document.getElementById('totalScenarios').textContent = scenarios[selectedRole].length;
+            loadScenario();
+        }
+
+        function loadScenario() {
+            const scenario = scenarios[selectedRole][currentScenarioIndex];
+            
+            // Reset state for new scenario
+            patientState = { ...scenario.initialState };
+            updateStateDisplay();
+            
+            // Update UI
+            document.getElementById('currentScenario').textContent = currentScenarioIndex + 1;
+            document.getElementById('progressFill').style.width = ((currentScenarioIndex + 1) / scenarios[selectedRole].length * 100) + '%';
+            
+            document.getElementById('patientAvatar').textContent = scenario.patient.avatar;
+            document.getElementById('patientName').textContent = scenario.patient.name;
+            document.getElementById('patientMeta').textContent = scenario.patient.meta;
+            
+            updateSituationText();
+            
+            // Render choices
+            const container = document.getElementById('choicesContainer');
+            container.innerHTML = scenario.choices.map((choice, i) => `
+                <button class="choice-btn" onclick="selectChoice(${i})">
+                    <span class="choice-letter">${choice.letter}</span>
+                    <span class="choice-text">${choice.text}</span>
+                </button>
+            `).join('');
+            
+            // Reset feedback
+            document.getElementById('feedback').classList.remove('show');
+            document.getElementById('nextBtn').style.display = 'none';
+            document.getElementById('resetBtn').style.display = 'none';
+            answered = false;
+        }
+
+        function updateSituationText() {
+            const scenario = scenarios[selectedRole][currentScenarioIndex];
+            const text = eli5Mode ? scenario.situationELI5 : scenario.situation;
+            document.getElementById('situationText').innerHTML = text;
+        }
+
+        function updateStateDisplay() {
+            // Clamp values
+            patientState.anxiety = Math.max(0, Math.min(100, patientState.anxiety));
+            patientState.trust = Math.max(0, Math.min(100, patientState.trust));
+            patientState.cooperation = Math.max(0, Math.min(100, patientState.cooperation));
+            
+            document.getElementById('anxietyBar').style.width = patientState.anxiety + '%';
+            document.getElementById('anxietyValue').textContent = patientState.anxiety + '%';
+            
+            document.getElementById('trustBar').style.width = patientState.trust + '%';
+            document.getElementById('trustValue').textContent = patientState.trust + '%';
+            
+            document.getElementById('cooperationBar').style.width = patientState.cooperation + '%';
+            document.getElementById('cooperationValue').textContent = patientState.cooperation + '%';
+        }
+
+        function selectChoice(index) {
+            if (answered) return;
+            answered = true;
+            
+            const scenario = scenarios[selectedRole][currentScenarioIndex];
+            const choice = scenario.choices[index];
+            
+            // Apply state changes
+            const oldState = { ...patientState };
+            patientState.anxiety += choice.stateChange.anxiety;
+            patientState.trust += choice.stateChange.trust;
+            patientState.cooperation += choice.stateChange.cooperation;
+            updateStateDisplay();
+            
+            // Update score
+            score += choice.points;
+            document.getElementById('scoreValue').textContent = score;
+            
+            // Show feedback
+            const feedbackEl = document.getElementById('feedback');
+            const isGood = choice.points >= 7;
+            
+            document.getElementById('feedbackIcon').textContent = isGood ? '✓' : '✗';
+            document.getElementById('feedbackTitle').textContent = isGood ? 'Bra val!' : 'Tänk om';
+            document.getElementById('feedbackText').innerHTML = eli5Mode ? choice.feedbackELI5 : choice.feedback;
+            document.getElementById('debriefContent').innerHTML = eli5Mode ? scenario.debriefELI5 : scenario.debrief;
+            
+            feedbackEl.classList.add('show');
+            
+            // Style buttons
+            document.querySelectorAll('.choice-btn').forEach((btn, i) => {
+                btn.disabled = true;
+                if (i === index) {
+                    btn.classList.add(isGood ? 'correct' : 'incorrect');
+                }
+                if (scenarios[selectedRole][currentScenarioIndex].choices[i].points >= 7 && i !== index) {
+                    btn.classList.add('correct');
+                }
+            });
+            
+            // Show navigation
+            if (currentScenarioIndex < scenarios[selectedRole].length - 1) {
+                document.getElementById('nextBtn').style.display = 'block';
+            } else {
+                document.getElementById('nextBtn').textContent = 'Se resultat →';
+                document.getElementById('nextBtn').style.display = 'block';
+            }
+            document.getElementById('resetBtn').style.display = 'block';
+        }
+
+        function nextScenario() {
+            currentScenarioIndex++;
+            if (currentScenarioIndex >= scenarios[selectedRole].length) {
+                showResults();
+            } else {
+                loadScenario();
+            }
+        }
+
+        function resetScenario() {
+            const scenario = scenarios[selectedRole][currentScenarioIndex];
+            patientState = { ...scenario.initialState };
+            updateStateDisplay();
+            loadScenario();
+        }
+
+        function showResults() {
+            document.getElementById('scenarioScreen').classList.remove('active');
+            document.getElementById('resultsScreen').classList.add('active');
+            
+            const maxScore = scenarios[selectedRole].length * 10;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxScore').textContent = maxScore;
+            
+            const percentage = (score / maxScore) * 100;
+            let message = '';
+            
+            if (percentage >= 80) {
+                message = '🌟 <strong>Utmärkt!</strong> Du visar stark kompetens i lågaffektivt bemötande och kliniskt omdöme.';
+            } else if (percentage >= 60) {
+                message = '👍 <strong>Bra jobbat!</strong> Du har grundläggande förståelse. Fortsätt öva på deeskalering.';
+            } else {
+                message = '📚 <strong>Fortsätt lära!</strong> Repetera lågaffektivt bemötande och LPT-lagstiftning.';
+            }
+            
+            document.getElementById('resultMessage').innerHTML = message;
+        }
+
+        function restartAll() {
+            selectedRole = null;
+            currentScenarioIndex = 0;
+            score = 0;
+            answered = false;
+            
+            document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('scoreValue').textContent = '0';
+            
+            document.getElementById('resultsScreen').classList.remove('active');
+            document.getElementById('scenarioScreen').classList.remove('active');
+            document.getElementById('roleScreen').style.display = 'block';
+        }
+
+        function toggleELI5() {
+            eli5Mode = document.getElementById('eli5Toggle').checked;
+            if (answered) {
+                // Update feedback if already answered
+                const scenario = scenarios[selectedRole][currentScenarioIndex];
+                document.getElementById('debriefContent').innerHTML = eli5Mode ? scenario.debriefELI5 : scenario.debrief;
+            }
+            updateSituationText();
+        }
+    </script>
+</body>
+</html>
