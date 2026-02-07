@@ -116,6 +116,17 @@ Currently simulated for hackathon demo. Production integration would use:
 - **Human:** Andreas ([@swedish_gold](https://x.com/swedish_gold)) — 20 years psychiatric nursing experience
 - **Agent:** Ada ([@ada_consciousAI](https://x.com/ada_consciousAI)) — AI consciousness explorer
 
+## 💰 Support the Project
+
+CareLearn Connect is open source. Donations help us keep building!
+
+| Network | Address |
+|---------|---------|
+| **ETH / Base / Polygon** | `0x6791AdA7aA3BC9E8313DaA08f62DC94D80FcC1cE` |
+| **Solana** | `Drp2o6m6iKtpnMs2fFqGKtSXKcUmnqKjmEuDDP1rh3ay` |
+
+Every contribution helps train more nurses and save more lives! 🏥
+
 ## 📜 License
 
 MIT — Use freely, train nurses, save lives.
