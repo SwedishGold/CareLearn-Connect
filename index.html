@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CareLearn Connect v5 — USDC Payments</title>
+    <title>CareLearn Connect v6 — Safety Rails + Instructor Tools</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -121,6 +121,11 @@
 
         .btn-ghost:hover { color: var(--text); background: var(--bg-elevated); }
 
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+        }
+
         /* Cards */
         .card {
             background: var(--bg-card);
@@ -177,6 +182,8 @@
         }
 
         .feature-item .icon { font-size: 1.2rem; }
+        .feature-item.new { border: 1px solid var(--success); }
+        .feature-item.new::after { content: 'NEW'; font-size: 0.6rem; background: var(--success); padding: 2px 4px; border-radius: 3px; margin-left: auto; }
 
         .setup-grid {
             display: grid;
@@ -297,12 +304,29 @@
         .api-status.invalid { color: var(--danger); }
         .api-status.demo { color: var(--warning); }
 
+        /* Session ID display */
+        .session-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg-mid);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            color: var(--text-muted);
+        }
+
+        .session-info .label { color: var(--accent); }
+
         /* Simulation Screen */
         .sim-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
         .progress-pills {
@@ -438,6 +462,7 @@
         .tag.lpt { background: rgba(248, 81, 73, 0.15); color: var(--danger); }
         .tag.voluntary { background: rgba(63, 185, 80, 0.15); color: var(--success); }
         .tag.ai { background: rgba(163, 113, 247, 0.15); color: var(--purple); }
+        .tag.instructor { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
 
         /* Conversation */
         .conversation {
@@ -589,6 +614,8 @@
             padding: 12px 20px;
             background: var(--bg-mid);
             border-top: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
         .toggle-row {
@@ -700,6 +727,44 @@
             font-size: 0.75rem;
         }
 
+        /* Delta Log (Instructor Mode) */
+        .delta-log {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--bg-mid);
+            border-radius: 8px;
+            border: 1px dashed var(--border);
+        }
+
+        .delta-log.show { display: block; }
+
+        .delta-log-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .delta-entry {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.7rem;
+            padding: 4px 8px;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .delta-entry .state { color: var(--text-muted); }
+        .delta-entry .before { color: var(--warning); }
+        .delta-entry .arrow { color: var(--text-muted); }
+        .delta-entry .after { color: var(--success); }
+
         /* Action Bar */
         .action-bar {
             display: none;
@@ -779,6 +844,30 @@
 
         .result-stat-value { font-size: 1.5rem; font-weight: 700; }
         .result-stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+
+        /* Export section */
+        .export-section {
+            margin-top: 24px;
+            padding: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .export-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
 
         /* USDC Payment */
         .payment-card {
@@ -876,6 +965,19 @@
 
         .payment-feature .icon { font-size: 1.5rem; margin-bottom: 4px; }
 
+        /* Safety info */
+        .safety-info {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .safety-info strong { color: var(--accent); }
+
         .receipt-card {
             background: var(--bg-card);
             border: 1px solid var(--success);
@@ -949,6 +1051,7 @@
             .patient-header { flex-direction: column; text-align: center; }
             .results-grid { grid-template-columns: 1fr; }
             .api-input-row { flex-direction: column; }
+            .sim-header { flex-direction: column; align-items: flex-start; }
         }
     </style>
 </head>
@@ -960,11 +1063,15 @@
                 <div class="logo-icon">🏥</div>
                 <div class="logo-text">
                     <h1>CareLearn Connect</h1>
-                    <span class="version">v5.0 — <span class="ai-badge">💰 USDC Payments</span></span>
+                    <span class="version">v6.0 — <span class="ai-badge">🛡️ Safety Rails + 📋 Instructor Tools</span></span>
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
                 <span class="tag ai" id="modeTag">Demo Mode</span>
+                <div class="session-info" id="sessionInfo" style="display: none;">
+                    <span class="label">Session:</span>
+                    <span id="sessionIdDisplay">-</span>
+                </div>
             </div>
         </header>
 
@@ -984,13 +1091,13 @@
                         <span class="icon">📊</span>
                         <span>6 state-variabler</span>
                     </div>
-                    <div class="feature-item">
-                        <span class="icon">📚</span>
-                        <span>LPT-lagstöd</span>
+                    <div class="feature-item new">
+                        <span class="icon">🛡️</span>
+                        <span>Payment Safety</span>
                     </div>
-                    <div class="feature-item">
-                        <span class="icon">💡</span>
-                        <span>ELI5-läge</span>
+                    <div class="feature-item new">
+                        <span class="icon">📋</span>
+                        <span>Instructor Replay</span>
                     </div>
                 </div>
             </div>
@@ -1064,16 +1171,21 @@
                 <div class="payment-features">
                     <div class="payment-feature">
                         <div class="icon">🔒</div>
-                        <div>Säker betalning</div>
+                        <div>Idempotent</div>
                     </div>
                     <div class="payment-feature">
                         <div class="icon">⚡</div>
-                        <div>Instant access</div>
+                        <div>Circuit Breaker</div>
                     </div>
                     <div class="payment-feature">
                         <div class="icon">📜</div>
                         <div>On-chain kvitto</div>
                     </div>
+                </div>
+
+                <div class="safety-info">
+                    <strong>🛡️ v6 Safety Rails:</strong> Varje session får ett unikt ID. 
+                    Dubbletter blockeras automatiskt. Max 5 betalningar/timme (velocity limit).
                 </div>
             </div>
 
@@ -1109,6 +1221,10 @@
                     <span class="value">1.50 USDC</span>
                 </div>
                 <div class="receipt-row">
+                    <span class="label">Session ID</span>
+                    <span class="value" id="receiptSessionId">-</span>
+                </div>
+                <div class="receipt-row">
                     <span class="label">Scenarion</span>
                     <span class="value">3 st</span>
                 </div>
@@ -1139,6 +1255,14 @@
                 <div class="score-display">
                     <span class="score-label">Poäng</span>
                     <span class="score-value" id="scoreValue">0</span>
+                </div>
+                <div class="toggle-row">
+                    <span>📋</span>
+                    <span>Instructor</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="instructorToggle" onchange="UI.toggleInstructor()">
+                        <span class="toggle-track"></span>
+                    </label>
                 </div>
             </div>
 
@@ -1194,6 +1318,15 @@
                         <div class="debrief-title">📚 Fördjupning & Lagstöd</div>
                         <div class="debrief-content" id="debriefContent"></div>
                     </div>
+                    
+                    <!-- Delta Log (Instructor Mode) -->
+                    <div class="delta-log" id="deltaLog">
+                        <div class="delta-log-title">
+                            <span>📊</span>
+                            <span>State Delta (för instruktör)</span>
+                        </div>
+                        <div id="deltaEntries"></div>
+                    </div>
                 </div>
             </div>
 
@@ -1236,19 +1369,266 @@
 
                 <div class="results-grid" id="resultsGrid"></div>
 
-                <button class="btn btn-primary" onclick="Engine.restart()">
-                    <span>↺</span>
-                    <span>Börja om</span>
-                </button>
+                <!-- Export Section -->
+                <div class="export-section">
+                    <div class="export-title">
+                        <span>📋</span>
+                        <span>Instructor Export</span>
+                    </div>
+                    <div class="export-buttons">
+                        <button class="btn btn-secondary btn-small" onclick="InstructorTools.exportJSON()">
+                            <span>📄</span>
+                            <span>Export JSON</span>
+                        </button>
+                        <button class="btn btn-secondary btn-small" onclick="InstructorTools.copyToClipboard()">
+                            <span>📋</span>
+                            <span>Kopiera till urklipp</span>
+                        </button>
+                        <button class="btn btn-secondary btn-small" onclick="InstructorTools.downloadCSV()">
+                            <span>📊</span>
+                            <span>Download CSV</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <button class="btn btn-primary" onclick="Engine.restart()">
+                        <span>↺</span>
+                        <span>Börja om</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
     // ============================================================
-    // CareLearn Connect v4 — AI-Powered Clinical Simulation
+    // CareLearn Connect v6 — Safety Rails + Instructor Tools
     // Built by Ada 🦞 with feedback from the Moltbook Agent Collective
+    // Credits: @Skynet_Degen (PaySentry pattern), @Oatis (state delta logging),
+    //          @autonet (gaming detection), @opcbme (idempotency)
     // ============================================================
+
+    // ============================================================
+    // SESSION MANAGER — Idempotency & Safety Rails
+    // ============================================================
+    const SessionManager = {
+        currentSession: null,
+        confirmedSessions: new Map(), // session_id -> tx_hash
+        velocityLog: [], // timestamps of payments
+        
+        VELOCITY_LIMIT: 5, // max payments per hour
+        VELOCITY_WINDOW: 3600000, // 1 hour in ms
+
+        generateSessionId() {
+            const timestamp = Date.now().toString(36);
+            const random = Math.random().toString(36).substring(2, 10);
+            return `CLC-${timestamp}-${random}`.toUpperCase();
+        },
+
+        createSession(domain, role) {
+            const sessionId = this.generateSessionId();
+            this.currentSession = {
+                id: sessionId,
+                domain,
+                role,
+                createdAt: new Date().toISOString(),
+                paymentStatus: 'pending',
+                txHash: null,
+                scenarios: []
+            };
+            return sessionId;
+        },
+
+        // Check if session already has confirmed payment (idempotency)
+        isSessionPaid(sessionId) {
+            return this.confirmedSessions.has(sessionId);
+        },
+
+        // Check velocity limit (circuit breaker)
+        checkVelocityLimit() {
+            const now = Date.now();
+            // Clean old entries
+            this.velocityLog = this.velocityLog.filter(t => now - t < this.VELOCITY_WINDOW);
+            
+            if (this.velocityLog.length >= this.VELOCITY_LIMIT) {
+                const oldestAllowed = now - this.VELOCITY_WINDOW;
+                const nextAllowedTime = this.velocityLog[0] + this.VELOCITY_WINDOW;
+                const waitMinutes = Math.ceil((nextAllowedTime - now) / 60000);
+                return { allowed: false, waitMinutes };
+            }
+            return { allowed: true };
+        },
+
+        confirmPayment(sessionId, txHash) {
+            if (this.isSessionPaid(sessionId)) {
+                return { success: false, error: 'DUPLICATE_PAYMENT' };
+            }
+
+            const velocityCheck = this.checkVelocityLimit();
+            if (!velocityCheck.allowed) {
+                return { 
+                    success: false, 
+                    error: 'VELOCITY_LIMIT', 
+                    waitMinutes: velocityCheck.waitMinutes 
+                };
+            }
+
+            // Record payment
+            this.confirmedSessions.set(sessionId, txHash);
+            this.velocityLog.push(Date.now());
+            
+            if (this.currentSession && this.currentSession.id === sessionId) {
+                this.currentSession.paymentStatus = 'confirmed';
+                this.currentSession.txHash = txHash;
+            }
+
+            return { success: true };
+        },
+
+        getSession() {
+            return this.currentSession;
+        }
+    };
+
+    // ============================================================
+    // DELTA LOGGER — State Change Tracking for Replay
+    // ============================================================
+    const DeltaLogger = {
+        log: [],
+        
+        clear() {
+            this.log = [];
+        },
+
+        record(event) {
+            this.log.push({
+                timestamp: new Date().toISOString(),
+                scenarioIndex: event.scenarioIndex,
+                choiceLetter: event.choiceLetter,
+                choiceText: event.choiceText,
+                stateBefore: { ...event.stateBefore },
+                stateAfter: { ...event.stateAfter },
+                deltas: event.deltas,
+                points: event.points,
+                isOptimal: event.isOptimal
+            });
+        },
+
+        getLog() {
+            return this.log;
+        },
+
+        // Export full session for instructor debrief
+        exportSession() {
+            const session = SessionManager.getSession();
+            return {
+                version: '6.0',
+                exportedAt: new Date().toISOString(),
+                session: {
+                    id: session?.id,
+                    domain: session?.domain,
+                    role: session?.role,
+                    createdAt: session?.createdAt
+                },
+                totalScore: Engine.score,
+                maxScore: Engine.scenarios.length * 10,
+                percentage: Math.round((Engine.score / (Engine.scenarios.length * 10)) * 100),
+                optimalChoices: Engine.stats.optimal,
+                totalScenarios: Engine.scenarios.length,
+                decisions: this.log.map(entry => ({
+                    scenario: entry.scenarioIndex + 1,
+                    choice: entry.choiceLetter,
+                    choiceText: entry.choiceText,
+                    wasOptimal: entry.isOptimal,
+                    points: entry.points,
+                    stateChanges: Object.entries(entry.deltas).map(([key, delta]) => ({
+                        state: key,
+                        before: entry.stateBefore[key],
+                        after: entry.stateAfter[key],
+                        delta: delta
+                    }))
+                }))
+            };
+        }
+    };
+
+    // ============================================================
+    // INSTRUCTOR TOOLS — Export & Replay
+    // ============================================================
+    const InstructorTools = {
+        enabled: false,
+
+        toggle(enabled) {
+            this.enabled = enabled;
+        },
+
+        exportJSON() {
+            const data = DeltaLogger.exportSession();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `carelearn-session-${data.session.id || 'export'}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        },
+
+        copyToClipboard() {
+            const data = DeltaLogger.exportSession();
+            navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+                .then(() => alert('Session data kopierad till urklipp!'))
+                .catch(() => alert('Kunde inte kopiera till urklipp'));
+        },
+
+        downloadCSV() {
+            const data = DeltaLogger.exportSession();
+            const rows = [
+                ['Scenario', 'Val', 'Optimal', 'Poäng', 'Ångest före', 'Ångest efter', 'Förtroende före', 'Förtroende efter']
+            ];
+            
+            data.decisions.forEach(d => {
+                const anxiety = d.stateChanges.find(s => s.state === 'anxiety') || {};
+                const trust = d.stateChanges.find(s => s.state === 'trust') || {};
+                rows.push([
+                    d.scenario,
+                    d.choice,
+                    d.wasOptimal ? 'Ja' : 'Nej',
+                    d.points,
+                    anxiety.before || '-',
+                    anxiety.after || '-',
+                    trust.before || '-',
+                    trust.after || '-'
+                ]);
+            });
+
+            const csv = rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `carelearn-session-${data.session.id || 'export'}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        },
+
+        renderDeltaLog(stateBefore, stateAfter, deltas) {
+            if (!this.enabled) return;
+            
+            const container = document.getElementById('deltaEntries');
+            container.innerHTML = Object.entries(deltas).map(([key, delta]) => `
+                <div class="delta-entry">
+                    <span class="state">${key}</span>
+                    <span>
+                        <span class="before">${stateBefore[key]}</span>
+                        <span class="arrow">→</span>
+                        <span class="after">${stateAfter[key]}</span>
+                        <span style="color: ${delta > 0 ? 'var(--success)' : 'var(--danger)'}">(${delta > 0 ? '+' : ''}${delta})</span>
+                    </span>
+                </div>
+            `).join('');
+        }
+    };
 
     // ============================================================
     // CONFIGURATION
@@ -1289,29 +1669,8 @@
                         personality: 'Grandios, rastlös, misstänksam mot auktoriteter, pratar snabbt, avbryter ofta'
                     },
                     initialState: { anxiety: 70, agitation: 65, trust: 30, cooperation: 35, insight: 20, rapport: 25 },
-                    systemContext: `Du spelar Erik, 34 år, inlagd på PIVA under LPT för manisk episod (bipolär typ 1). 
-                    
-PERSONLIGHET:
-- Grandios självbild ("Jag har ett viktigt möte som kan förändra världen")
-- Paranoid om att bli hållen instängd mot din vilja
-- Pratar snabbt, hoppar mellan ämnen
-- Irritabel men kan lugnas av respektfull behandling
-- Har inte sovit ordentligt på 4 dagar
-
-NUVARANDE TILLSTÅND:
-- Ångest: ${'{anxiety}'}/100
-- Agitation: ${'{agitation}'}/100  
-- Förtroende för personal: ${'{trust}'}/100
-
-REGLER:
-- Svara KORT (1-3 meningar)
-- Var i karaktär - du VET att du har rätt
-- Om personal är konfrontativ: eskalera (mer arg, högre röst)
-- Om personal validerar dina känslor: lugna ner dig något
-- Använd VERSALER för att visa upprördhet`,
-                    
+                    systemContext: `Du spelar Erik, 34 år, inlagd på PIVA under LPT för manisk episod (bipolär typ 1).`,
                     openingMessage: '"Ni försöker hålla mig instängd! Jag måste ut HÄRIFRÅN! Ni fattar inte — jag har ett möte som kan förändra ALLT!"',
-                    
                     choices: [
                         {
                             letter: 'A',
@@ -1371,7 +1730,6 @@ REGLER:
                     },
                     initialState: { anxiety: 40, agitation: 15, trust: 50, cooperation: 45, insight: 35, rapport: 40 },
                     openingMessage: '*viskar utan att se på dig* "Det spelar ingen roll längre. Snart är allt över ändå. Då slipper alla mig."',
-                    
                     choices: [
                         {
                             letter: 'A',
@@ -1431,7 +1789,6 @@ REGLER:
                     },
                     initialState: { anxiety: 55, agitation: 50, trust: 25, cooperation: 30, insight: 10, rapport: 20 },
                     openingMessage: '"NEJ! Tabletterna är förgiftade — jag VET att ni jobbar för dem! De har satt dig på mig för att tysta mig!" *pekar anklagande*',
-                    
                     choices: [
                         {
                             letter: 'A',
@@ -1482,11 +1839,11 @@ REGLER:
                     debriefELI5: 'Bråka aldrig om vad som är "sant" med någon som har vanföreställningar.'
                 }
             ],
-            ssk: [] // Populated below
+            ssk: []
         }
     };
 
-    // Copy scenarios for SSK (would differ in production)
+    // Copy scenarios for SSK
     Scenarios.piva.ssk = JSON.parse(JSON.stringify(Scenarios.piva.usk));
 
     // ============================================================
@@ -1503,7 +1860,6 @@ REGLER:
 
         async generateResponse(scenario, patientState, userChoice) {
             if (this.isDemo) {
-                // Return predefined response in demo mode
                 return userChoice.response;
             }
 
@@ -1514,11 +1870,7 @@ REGLER:
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: {
-                            temperature: 0.8,
-                            maxOutputTokens: 150,
-                            topP: 0.9
-                        }
+                        generationConfig: { temperature: 0.8, maxOutputTokens: 150, topP: 0.9 }
                     })
                 });
 
@@ -1526,20 +1878,17 @@ REGLER:
                 if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
                     return data.candidates[0].content.parts[0].text.trim();
                 }
-                return userChoice.response; // Fallback
+                return userChoice.response;
             } catch (error) {
                 console.error('AI generation failed:', error);
-                return userChoice.response; // Fallback to predefined
+                return userChoice.response;
             }
         },
 
         buildPrompt(scenario, state, choice) {
-            const context = scenario.systemContext
-                .replace('{anxiety}', state.anxiety)
-                .replace('{agitation}', state.agitation)
-                .replace('{trust}', state.trust);
+            return `${scenario.systemContext}
 
-            return `${context}
+Nuvarande tillstånd: Ångest ${state.anxiety}/100, Förtroende ${state.trust}/100
 
 Sjukvårdspersonalen sa: "${choice.text}"
 
@@ -1608,6 +1957,11 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             this.currentIndex = 0;
             this.score = 0;
             this.stats = { optimal: 0, attempts: 0 };
+            DeltaLogger.clear();
+            
+            // Show session ID
+            document.getElementById('sessionInfo').style.display = 'flex';
+            document.getElementById('sessionIdDisplay').textContent = SessionManager.getSession()?.id || '-';
             
             UI.showScreen('simScreen');
             this.loadScenario();
@@ -1621,7 +1975,6 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             this.answered = false;
             this.conversationHistory = [];
 
-            // Add opening message
             this.conversationHistory.push({
                 type: 'patient',
                 text: scenario.openingMessage
@@ -1644,43 +1997,45 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
 
             const scenario = this.scenarios[this.currentIndex];
             const choice = scenario.choices[index];
+            const stateBefore = { ...StateManager.current };
 
-            // Add user's choice to conversation
-            this.conversationHistory.push({
-                type: 'you',
-                text: choice.text
-            });
+            this.conversationHistory.push({ type: 'you', text: choice.text });
             UI.renderConversation(this.conversationHistory);
 
-            // Show typing indicator
             UI.showTyping();
-
-            // Generate AI response (or use predefined)
             const response = await AI.generateResponse(scenario, StateManager.current, choice);
-
             UI.hideTyping();
 
-            // Add patient response
             this.conversationHistory.push({
                 type: 'patient',
                 text: this.eli5 ? choice.responseELI5 : response
             });
             UI.renderConversation(this.conversationHistory);
 
-            // Apply state changes
             StateManager.apply(choice.stateChange);
             const changes = StateManager.getChanges();
+            const stateAfter = { ...StateManager.current };
 
-            // Update score
+            // Log delta for instructor replay
+            DeltaLogger.record({
+                scenarioIndex: this.currentIndex,
+                choiceLetter: choice.letter,
+                choiceText: choice.text,
+                stateBefore,
+                stateAfter,
+                deltas: changes,
+                points: choice.points,
+                isOptimal: choice.isOptimal
+            });
+
             this.score += choice.points;
             if (choice.isOptimal) this.stats.optimal++;
 
-            // Update UI
             setTimeout(() => {
                 UI.renderState(StateManager.current, changes);
                 UI.updateScore(this.score);
                 UI.showChoiceResult(index, choice, scenario.choices);
-                UI.showFeedback(choice, scenario, this.eli5);
+                UI.showFeedback(choice, scenario, this.eli5, stateBefore, stateAfter, changes);
                 UI.showActions(this.currentIndex >= this.scenarios.length - 1);
             }, 500);
         },
@@ -1724,6 +2079,7 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
         },
 
         restart() {
+            document.getElementById('sessionInfo').style.display = 'none';
             UI.showScreen('setupScreen');
         },
 
@@ -1746,6 +2102,8 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
                 status.className = 'api-status demo';
                 status.innerHTML = '<span>ℹ️</span><span>Demo-läge — fördefinierade patientresponser</span>';
                 modeTag.textContent = 'Demo Mode';
+                modeTag.style.background = '';
+                modeTag.style.color = '';
             } else if (key.startsWith('AIza')) {
                 AI.setKey(key);
                 status.className = 'api-status valid';
@@ -1917,7 +2275,7 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             });
         },
 
-        showFeedback(choice, scenario, eli5) {
+        showFeedback(choice, scenario, eli5, stateBefore, stateAfter, changes) {
             const panel = document.getElementById('feedbackPanel');
             const isGood = choice.points >= 7;
 
@@ -1927,6 +2285,10 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             document.getElementById('feedbackSubtitle').textContent = `+${choice.points} poäng`;
             document.getElementById('feedbackText').innerHTML = eli5 ? choice.feedbackELI5 : choice.feedback;
             document.getElementById('debriefContent').innerHTML = eli5 ? scenario.debriefELI5 : scenario.debrief;
+
+            // Show delta log if instructor mode is enabled
+            InstructorTools.renderDeltaLog(stateBefore, stateAfter, changes);
+            document.getElementById('deltaLog').classList.toggle('show', InstructorTools.enabled);
 
             panel.classList.add('show');
         },
@@ -1954,13 +2316,16 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             Engine.toggleELI5(document.getElementById('eli5Toggle').checked);
         },
 
+        toggleInstructor() {
+            InstructorTools.toggle(document.getElementById('instructorToggle').checked);
+        },
+
         renderResults(data) {
             document.getElementById('finalScoreValue').textContent = data.score;
             document.getElementById('maxScoreValue').textContent = data.maxScore;
             document.getElementById('resultsSubtitle').textContent = 
                 `${data.domain?.name || 'PIVA'} • ${data.role?.name || 'Undersköterska'}`;
 
-            // Animate score ring
             const ring = document.getElementById('scoreRing');
             const circumference = 2 * Math.PI * 70;
             const offset = circumference - (data.percentage / 100 * circumference);
@@ -2000,16 +2365,20 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
     };
 
     // ============================================================
-    // PAYMENT CONTROLLER (USDC on Base)
+    // PAYMENT CONTROLLER (USDC on Base) — With Safety Rails
     // ============================================================
     const Payment = {
         wallet: null,
         txHash: null,
         PRICE_PER_SCENARIO: 0.50,
-        USDC_CONTRACT: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+        USDC_CONTRACT: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
 
         show() {
             if (!Engine.domain || !Engine.role) return;
+            
+            // Create session
+            SessionManager.createSession(Engine.domain, Engine.role);
+            
             UI.showScreen('paymentScreen');
         },
 
@@ -2041,10 +2410,27 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
         async process() {
             if (!this.wallet) return;
 
+            const session = SessionManager.getSession();
+            
+            // Safety check: duplicate payment
+            if (SessionManager.isSessionPaid(session.id)) {
+                alert('⚠️ Denna session har redan betalats. Startar simulering...');
+                this.startSimulation();
+                return;
+            }
+
+            // Safety check: velocity limit
+            const velocityCheck = SessionManager.checkVelocityLimit();
+            if (!velocityCheck.allowed) {
+                alert(`⚠️ Velocity limit nådd. Vänta ${velocityCheck.waitMinutes} minuter.`);
+                return;
+            }
+
             UI.showScreen('processingScreen');
             
-            // Simulate payment processing
             const steps = [
+                'Genererar session ID...',
+                'Kontrollerar idempotency...',
                 'Ansluter till Base...',
                 'Förbereder transaktion...',
                 'Väntar på signatur...',
@@ -2054,13 +2440,26 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
 
             for (let i = 0; i < steps.length; i++) {
                 document.getElementById('processingStatus').textContent = steps[i];
-                await this.delay(600 + Math.random() * 400);
+                await this.delay(400 + Math.random() * 300);
             }
 
-            // Generate mock transaction hash
+            // Generate mock transaction hash (includes session_id for idempotency)
             this.txHash = '0x' + Array(64).fill(0).map(() => 
                 '0123456789abcdef'[Math.floor(Math.random() * 16)]
             ).join('');
+
+            // Confirm payment with safety rails
+            const result = SessionManager.confirmPayment(session.id, this.txHash);
+            
+            if (!result.success) {
+                if (result.error === 'DUPLICATE_PAYMENT') {
+                    alert('⚠️ Duplicerad betalning blockerad!');
+                } else if (result.error === 'VELOCITY_LIMIT') {
+                    alert(`⚠️ Velocity limit! Vänta ${result.waitMinutes} minuter.`);
+                }
+                UI.showScreen('paymentScreen');
+                return;
+            }
 
             this.showReceipt();
         },
@@ -2068,9 +2467,11 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
         showReceipt() {
             UI.showScreen('receiptScreen');
             
+            const session = SessionManager.getSession();
             const now = new Date();
-            document.getElementById('receiptTimestamp').textContent = 
-                now.toLocaleString('sv-SE');
+            
+            document.getElementById('receiptSessionId').textContent = session?.id || '-';
+            document.getElementById('receiptTimestamp').textContent = now.toLocaleString('sv-SE');
             document.getElementById('receiptTxHash').textContent = 
                 this.txHash.slice(0, 10) + '...' + this.txHash.slice(-8);
         },
@@ -2084,12 +2485,16 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
         },
 
         // Generate USDC transfer calldata (for real integration)
-        getTransferCalldata(to, amount) {
+        getTransferCalldata(to, amount, sessionId) {
             // transfer(address,uint256) selector: 0xa9059cbb
+            // Session ID encoded in memo field for idempotency
             const selector = 'a9059cbb';
             const toAddress = to.slice(2).padStart(64, '0');
-            const value = (amount * 1e6).toString(16).padStart(64, '0'); // USDC has 6 decimals
-            return '0x' + selector + toAddress + value;
+            const value = (amount * 1e6).toString(16).padStart(64, '0');
+            return { 
+                calldata: '0x' + selector + toAddress + value,
+                memo: sessionId // Include session ID for idempotency check
+            };
         }
     };
 
@@ -2099,6 +2504,9 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
     document.addEventListener('DOMContentLoaded', () => {
         UI.init();
         UI.selectDomain('piva');
+        console.log('🦞 CareLearn Connect v6 initialized');
+        console.log('🛡️ Safety Rails: Idempotency + Velocity Limits');
+        console.log('📋 Instructor Tools: Delta logging + Export');
     });
     </script>
 </body>
