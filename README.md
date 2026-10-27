@@ -35,6 +35,17 @@ open index.html
 
 No build step required — it's vanilla HTML/CSS/JS!
 
+### Offline regression tests
+
+```bash
+npm ci --ignore-scripts --no-audit --no-fund
+npm test
+```
+
+The jsdom harness runs the static `index.html` in demo mode with network access blocked; it also syntax-checks archived versions. No API key, server, wallet, or payment is needed.
+
+Scoring counts only the **first attempt at each scenario** in a simulation run, including a zero-point first answer. `Försök igen` remains available for learning: it resets patient state and shows feedback, but awards no additional points or optimal-scenario credit. Every attempt stays in the instructor export; decision `points` are the points actually awarded (zero for retries), so they sum to `totalScore`. `wasOptimal` still describes each individual choice; `optimalChoices` counts only optimal first attempts. Starting a new simulation via the existing setup/session flow resets scores and the attempt log.
+
 ## 📊 Architecture
 
 ```
