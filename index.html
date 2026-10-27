@@ -1940,6 +1940,7 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
         scenarios: [],
         currentIndex: 0,
         score: 0,
+        scoredScenarios: new Set(),
         answered: false,
         eli5: false,
         stats: { optimal: 0, attempts: 0 },
@@ -1956,6 +1957,7 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             
             this.currentIndex = 0;
             this.score = 0;
+            this.scoredScenarios.clear();
             this.stats = { optimal: 0, attempts: 0 };
             DeltaLogger.clear();
             
@@ -2016,7 +2018,12 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             const changes = StateManager.getChanges();
             const stateAfter = { ...StateManager.current };
 
-            // Log delta for instructor replay
+            // Only the first attempt per scenario earns points; retries remain available for learning.
+            const isFirstAttempt = !this.scoredScenarios.has(this.currentIndex);
+            const awardedPoints = isFirstAttempt ? choice.points : 0;
+            this.scoredScenarios.add(this.currentIndex);
+
+            // Log every attempt, with only awarded points, so exports reconcile with the total.
             DeltaLogger.record({
                 scenarioIndex: this.currentIndex,
                 choiceLetter: choice.letter,
@@ -2024,18 +2031,18 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
                 stateBefore,
                 stateAfter,
                 deltas: changes,
-                points: choice.points,
+                points: awardedPoints,
                 isOptimal: choice.isOptimal
             });
 
-            this.score += choice.points;
-            if (choice.isOptimal) this.stats.optimal++;
+            this.score += awardedPoints;
+            if (isFirstAttempt && choice.isOptimal) this.stats.optimal++;
 
             setTimeout(() => {
                 UI.renderState(StateManager.current, changes);
                 UI.updateScore(this.score);
                 UI.showChoiceResult(index, choice, scenario.choices);
-                UI.showFeedback(choice, scenario, this.eli5, stateBefore, stateAfter, changes);
+                UI.showFeedback(choice, scenario, this.eli5, stateBefore, stateAfter, changes, isFirstAttempt);
                 UI.showActions(this.currentIndex >= this.scenarios.length - 1);
             }, 500);
         },
@@ -2275,14 +2282,16 @@ Svara som ${scenario.patient.name} skulle svara. Kort (1-3 meningar), i karaktä
             });
         },
 
-        showFeedback(choice, scenario, eli5, stateBefore, stateAfter, changes) {
+        showFeedback(choice, scenario, eli5, stateBefore, stateAfter, changes, isFirstAttempt) {
             const panel = document.getElementById('feedbackPanel');
             const isGood = choice.points >= 7;
 
             document.getElementById('feedbackIcon').className = `feedback-icon ${isGood ? 'good' : 'bad'}`;
             document.getElementById('feedbackIcon').textContent = isGood ? '✓' : '✗';
             document.getElementById('feedbackTitle').textContent = isGood ? 'Bra val!' : 'Tänk om';
-            document.getElementById('feedbackSubtitle').textContent = `+${choice.points} poäng`;
+            document.getElementById('feedbackSubtitle').textContent = isFirstAttempt
+                ? `+${choice.points} poäng`
+                : 'Övningsförsök — inga nya poäng';
             document.getElementById('feedbackText').innerHTML = eli5 ? choice.feedbackELI5 : choice.feedback;
             document.getElementById('debriefContent').innerHTML = eli5 ? scenario.debriefELI5 : scenario.debrief;
 
